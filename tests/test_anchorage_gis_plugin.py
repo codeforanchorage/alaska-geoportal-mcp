@@ -4185,6 +4185,186 @@ class TestSpatialQueryPolygonBuffer:
                 )
 
 
+class TestFilterPolygonUnion:
+    """Multi-feature filters must perform a REAL geometric union.
+
+    Concatenated rings under the even-odd fill rule flip overlapping
+    and adjacent regions into holes, so the filter region shrinks as
+    container features are added -- targets inside individual
+    containers get silently dropped (parity/invalid-union bug,
+    2026-08-28)."""
+
+    # Esri orientation: clockwise exteriors (negative shoelace area).
+    SQ_A = [
+        [0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0], [0.0, 0.0],
+    ]
+    # Overlaps SQ_A on the unit square [1,2]x[1,2].
+    SQ_B = [
+        [1.0, 1.0], [1.0, 3.0], [3.0, 3.0], [3.0, 1.0], [1.0, 1.0],
+    ]
+    # Shares the x=2 edge with SQ_A (adjacent parcels).
+    SQ_ADJ = [
+        [2.0, 0.0], [2.0, 2.0], [4.0, 2.0], [4.0, 0.0], [2.0, 0.0],
+    ]
+
+    @pytest.fixture
+    def plugin(self, anchorage_config):
+        p = AnchorageGISPlugin(anchorage_config)
+        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        return p
+
+    def test_overlapping_rings_union_without_parity_hole(self):
+        out = AnchorageGISPlugin._union_esri_rings(
+            [self.SQ_A, self.SQ_B]
+        )
+        assert out is not None
+        assert len(out) == 1
+        # 4 + 4 - 1 overlap. Even-odd over the concatenated rings
+        # would read 6 (the overlap flips into a hole).
+        area = abs(AnchorageGISPlugin._ring_area(out[0]))
+        assert area == pytest.approx(7.0, rel=1e-6)
+        # Output keeps Esri orientation: clockwise exterior.
+        assert AnchorageGISPlugin._ring_area(out[0]) < 0
+
+    def test_adjacent_rings_dissolve(self):
+        out = AnchorageGISPlugin._union_esri_rings(
+            [self.SQ_A, self.SQ_ADJ]
+        )
+        assert out is not None
+        assert len(out) == 1
+        area = abs(AnchorageGISPlugin._ring_area(out[0]))
+        assert area == pytest.approx(8.0, rel=1e-6)
+
+    def test_disjoint_rings_survive(self):
+        far = [
+            [10.0, 10.0], [10.0, 11.0], [11.0, 11.0],
+            [11.0, 10.0], [10.0, 10.0],
+        ]
+        out = AnchorageGISPlugin._union_esri_rings([self.SQ_A, far])
+        assert out is not None
+        assert len(out) == 2
+        total = sum(
+            abs(AnchorageGISPlugin._ring_area(r)) for r in out
+        )
+        assert total == pytest.approx(5.0, rel=1e-6)
+
+    def test_degenerate_input_returns_none(self):
+        assert AnchorageGISPlugin._union_esri_rings([]) is None
+        assert AnchorageGISPlugin._union_esri_rings(
+            [[[0.0, 0.0], [1.0, 1.0]]]
+        ) is None
+
+    # ── _fetch_filter_polygon end-to-end over a mocked client ────────
+
+    LAYER_URL = (
+        "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0"
+    )
+
+    def _wire(self, plugin, count, pages):
+        """Mock meta/count GETs and paged feature POSTs."""
+
+        async def fake_get(url, params=None):
+            resp = Mock()
+            resp.raise_for_status = Mock()
+            if params and params.get("returnCountOnly") == "true":
+                resp.json.return_value = {"count": count}
+            else:
+                resp.json.return_value = {
+                    "geometryType": "esriGeometryPolygon"
+                }
+            return resp
+
+        async def fake_post(url, data=None):
+            offset = int((data or {}).get("resultOffset") or 0)
+            resp = Mock()
+            resp.raise_for_status = Mock()
+            resp.json.return_value = {
+                "features": pages.get(offset, [])
+            }
+            return resp
+
+        plugin.client = Mock()
+        plugin.client.get = AsyncMock(side_effect=fake_get)
+        plugin.client.post = AsyncMock(side_effect=fake_post)
+
+    @pytest.mark.asyncio
+    async def test_fetch_filter_polygon_unions_features(self, plugin):
+        self._wire(plugin, count=2, pages={
+            0: [
+                {"geometry": {"rings": [self.SQ_A]}},
+                {"geometry": {"rings": [self.SQ_B]}},
+            ],
+        })
+        with patch.object(
+            plugin,
+            "get_dataset",
+            new_callable=AsyncMock,
+            return_value={"url": self.LAYER_URL},
+        ):
+            out = await plugin._fetch_filter_polygon("c" * 32, "1=1")
+        assert len(out["rings"]) == 1
+        area = abs(AnchorageGISPlugin._ring_area(out["rings"][0]))
+        assert area == pytest.approx(7.0, rel=1e-6)
+
+    @pytest.mark.asyncio
+    async def test_single_feature_rings_pass_through(self, plugin):
+        self._wire(plugin, count=1, pages={
+            0: [{"geometry": {"rings": [self.SQ_A]}}],
+        })
+        with patch.object(
+            plugin,
+            "get_dataset",
+            new_callable=AsyncMock,
+            return_value={"url": self.LAYER_URL},
+        ):
+            out = await plugin._fetch_filter_polygon("c" * 32, "1=1")
+        # Untouched: no integer-grid rounding on the 1-feature path.
+        assert out["rings"] == [self.SQ_A]
+
+    @pytest.mark.asyncio
+    async def test_over_cap_refuses_loudly(self, plugin):
+        self._wire(plugin, count=5000, pages={})
+        with patch.object(
+            plugin,
+            "get_dataset",
+            new_callable=AsyncMock,
+            return_value={"url": self.LAYER_URL},
+        ):
+            with pytest.raises(ValueError, match="max is 2,000"):
+                await plugin._fetch_filter_polygon("c" * 32, "1=1")
+        # Refused before fetching any geometry.
+        plugin.client.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_pages_past_old_50_feature_cap(self, plugin):
+        # 120 disjoint unit squares served 60 per page: the old code
+        # fetched a single page of 50 and silently dropped the rest.
+        def sq(i):
+            x = i * 3.0
+            return [
+                [x, 0.0], [x, 1.0], [x + 1.0, 1.0],
+                [x + 1.0, 0.0], [x, 0.0],
+            ]
+
+        pages = {
+            0: [{"geometry": {"rings": [sq(i)]}} for i in range(60)],
+            60: [
+                {"geometry": {"rings": [sq(i)]}}
+                for i in range(60, 120)
+            ],
+        }
+        self._wire(plugin, count=120, pages=pages)
+        with patch.object(
+            plugin,
+            "get_dataset",
+            new_callable=AsyncMock,
+            return_value={"url": self.LAYER_URL},
+        ):
+            out = await plugin._fetch_filter_polygon("c" * 32, "1=1")
+        assert plugin.client.post.await_count == 2
+        assert len(out["rings"]) == 120
+
+
 class TestAggregateByPolygonBuffer:
     @pytest.fixture
     def plugin(self, anchorage_config):

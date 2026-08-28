@@ -1612,6 +1612,16 @@ class AnchorageGISPlugin(DataPlugin):
     # parks, plats) sit well under these limits. Raise with evidence.
     MAX_FILTER_RINGS = 1000
     MAX_FILTER_COORDS = 10000
+    # Cap on how many features _fetch_filter_polygon will fetch and
+    # union into one filter geometry. Above this, refuse LOUDLY: the
+    # old behaviour (fetch the first 50, silently drop the rest) is
+    # exactly the kind of quiet false negative this cap replaces.
+    MAX_FILTER_FEATURES = 2000
+    FILTER_FETCH_PAGE = 1000
+    # Integer scaling for the degree-space pyclipper union of filter
+    # rings: 1 clipper unit = 1e-7 degree (~1.1 cm of longitude at the
+    # equator). Distinct from CLIP_SCALE, which scales EPSG:3338 meters.
+    UNION_DEG_SCALE = 1e7
 
     @staticmethod
     def _geojson_to_esri_polygon(geojson: Any) -> Dict[str, Any]:
@@ -1663,15 +1673,82 @@ class AnchorageGISPlugin(DataPlugin):
             "spatialReference": {"wkid": 4326},
         }
 
+    @classmethod
+    def _union_esri_rings(
+        cls, rings: List[List[List[float]]]
+    ) -> Optional[List[List[List[float]]]]:
+        """Geometrically union possibly overlapping/adjacent rings.
+
+        Concatenating rings from many features into one Esri polygon
+        is NOT a union: under the even-odd fill rule applied to
+        overlapping same-orientation rings, each added ring can flip
+        already-covered area into a hole, so the filter region SHRINKS
+        as features are added (observed: multi-parcel container
+        filters silently dropping targets that sit squarely inside
+        individual parcels). This resolves the rings into clean,
+        non-overlapping rings with pyclipper before they go upstream.
+
+        Ring orientation must be internally consistent (all-Esri or
+        all-GeoJSON convention) so PFT_NONZERO adds overlapping
+        exteriors instead of cancelling them; holes wound opposite
+        their exteriors subtract correctly either way. Returns rings
+        in Esri orientation (clockwise exteriors, counter-clockwise
+        holes), or None when the union is empty or pyclipper rejects
+        the input -- callers fall back to the raw rings.
+        """
+        scale = cls.UNION_DEG_SCALE
+        paths = []
+        for ring in rings or []:
+            if not isinstance(ring, list):
+                continue
+            path = [
+                (
+                    int(round(pt[0] * scale)),
+                    int(round(pt[1] * scale)),
+                )
+                for pt in ring
+                if isinstance(pt, (list, tuple)) and len(pt) >= 2
+            ]
+            if len(path) > 1 and path[0] == path[-1]:
+                path.pop()
+            if len(path) >= 3:
+                paths.append(path)
+        if not paths:
+            return None
+        try:
+            pc = pyclipper.Pyclipper()
+            pc.AddPaths(paths, pyclipper.PT_SUBJECT, True)
+            solution = pc.Execute(
+                pyclipper.CT_UNION,
+                pyclipper.PFT_NONZERO,
+                pyclipper.PFT_NONZERO,
+            )
+        except pyclipper.ClipperException:
+            return None
+        out: List[List[List[float]]] = []
+        for path in solution:
+            if len(path) < 3:
+                continue
+            # Clipper emits CCW exteriors / CW holes (y-up); Esri
+            # wants the opposite, so reverse every ring, then close it.
+            ring = [[x / scale, y / scale] for x, y in reversed(path)]
+            ring.append(list(ring[0]))
+            out.append(ring)
+        return out or None
+
     async def _fetch_filter_polygon(
         self, filter_item_id: str, filter_where: str
     ) -> Dict[str, Any]:
         """Resolve a polygon filter from feature(s) in another layer.
 
         Queries the filter layer with ``filter_where``, validates it is a
-        polygon layer, and unions all matching features' rings into a
-        single Esri polygon. Typical use: pick one district or one park
-        feature as the filter geometry for a target layer.
+        polygon layer, and geometrically unions all matching features'
+        rings into a single Esri polygon (a true pyclipper union, not
+        ring concatenation -- see ``_union_esri_rings``). Refuses
+        loudly when the WHERE matches more than ``MAX_FILTER_FEATURES``
+        features rather than silently truncating. Typical use: pick one
+        district or one park feature as the filter geometry for a
+        target layer.
         """
         filter_item_id = self._validate_item_id(filter_item_id)
         validated_where = WhereValidator.validate(filter_where or "1=1")
@@ -1703,23 +1780,62 @@ class AnchorageGISPlugin(DataPlugin):
             )
 
         query_url = f"{url}/query"
-        params = {
-            "where": validated_where,
-            "outFields": "",
-            "returnGeometry": "true",
-            "outSR": "4326",
-            "f": "json",
-            "resultRecordCount": "50",
-        }
-        resp = await self.client.post(query_url, data=params)
-        resp.raise_for_status()
-        data = resp.json()
-        if "error" in data:
+
+        # Count first so an over-cap match refuses LOUDLY instead of
+        # silently unioning a truncated subset of the filter features.
+        count_resp = await self.client.get(
+            query_url,
+            params={
+                "where": validated_where,
+                "returnCountOnly": "true",
+                "f": "json",
+            },
+        )
+        count_resp.raise_for_status()
+        count_data = count_resp.json()
+        if "error" in count_data:
             raise RuntimeError(
-                data["error"].get("message", str(data["error"]))
+                count_data["error"].get(
+                    "message", str(count_data["error"])
+                )
+            )
+        match_count = int(count_data.get("count") or 0)
+        if match_count > self.MAX_FILTER_FEATURES:
+            raise ToolInputError(
+                f"filter_where {validated_where!r} matches "
+                f"{match_count:,} features in filter layer "
+                f"{filter_item_id}; max is "
+                f"{self.MAX_FILTER_FEATURES:,} for a spatial filter. "
+                f"Narrow the WHERE clause, or use "
+                f"aggregate_by_polygon, which assigns source features "
+                f"per polygon and has no such cap."
             )
 
-        features = data.get("features", [])
+        features: List[Dict[str, Any]] = []
+        offset = 0
+        while len(features) < match_count:
+            params = {
+                "where": validated_where,
+                "outFields": "",
+                "returnGeometry": "true",
+                "outSR": "4326",
+                "f": "json",
+                "resultRecordCount": str(self.FILTER_FETCH_PAGE),
+                "resultOffset": str(offset),
+            }
+            resp = await self.client.post(query_url, data=params)
+            resp.raise_for_status()
+            data = resp.json()
+            if "error" in data:
+                raise RuntimeError(
+                    data["error"].get("message", str(data["error"]))
+                )
+            page = data.get("features", [])
+            if not page:
+                break
+            features.extend(page)
+            offset += len(page)
+
         if not features:
             raise ToolInputError(
                 f"filter_where {validated_where!r} matched no features "
@@ -1736,6 +1852,15 @@ class AnchorageGISPlugin(DataPlugin):
                 f"filter features in {filter_item_id} have no "
                 f"polygon rings"
             )
+
+        # One feature's rings are already a coherent polygon -- pass
+        # them through untouched (no integer-grid rounding). Several
+        # features need a REAL union; see _union_esri_rings for why
+        # plain concatenation loses area.
+        if len(features) > 1:
+            unioned = self._union_esri_rings(all_rings)
+            if unioned is not None:
+                all_rings = unioned
 
         return {
             "rings": all_rings,
@@ -4078,6 +4203,19 @@ class AnchorageGISPlugin(DataPlugin):
             esri = self._geojson_to_esri_polygon(
                 {"type": "MultiPolygon", "coordinates": multi_coords}
             )
+            # True union, not ring concatenation: adjacent parcels'
+            # concatenated rings flip shared area into even-odd holes
+            # and silently drop overlay features (see
+            # _union_esri_rings).
+            if len(batch) > 1:
+                unioned = self._union_esri_rings(
+                    esri.get("rings") or []
+                )
+                if unioned is not None:
+                    esri = {
+                        "rings": unioned,
+                        "spatialReference": {"wkid": 4326},
+                    }
             feats = await self._paged_geojson_fetch(
                 overlay_url,
                 where=overlay_where,
@@ -5864,6 +6002,7 @@ class AnchorageGISPlugin(DataPlugin):
             geometry exceeds the filter caps."""
             nonlocal skipped_polys
             all_rings: List[Any] = []
+            used = 0
             skipped_in_value = 0
             for geom in geoms:
                 try:
@@ -5872,9 +6011,19 @@ class AnchorageGISPlugin(DataPlugin):
                     skipped_in_value += 1
                     continue
                 all_rings.extend(esri.get("rings") or [])
+                used += 1
             if not all_rings:
                 skipped_polys += skipped_in_value
                 return
+            # Concatenated rings from several polygons are not a
+            # union -- overlapping/adjacent rings flip covered area
+            # into holes (see _union_esri_rings). Dissolving also
+            # shrinks the payload, so combined queries fit the caps
+            # more often.
+            if used > 1:
+                unioned = self._union_esri_rings(all_rings)
+                if unioned is not None:
+                    all_rings = unioned
             coord_count = sum(
                 len(r) for r in all_rings if isinstance(r, list)
             )
