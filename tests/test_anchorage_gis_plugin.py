@@ -1868,7 +1868,7 @@ class TestUpstreamLoad:
             "spatial_query_polygon",
             new_callable=AsyncMock,
         ) as sqp:
-            await plugin._filter_by_polygon(
+            text, structured = await plugin._filter_by_polygon(
                 {
                     "source_item_id": _SOURCE_ID,
                     "container_item_id": _CONTAINER_ID,
@@ -1876,6 +1876,51 @@ class TestUpstreamLoad:
                 }
             )
         assert sqp.await_count == 0
+        # The failure must be a structured caveat, not just markdown:
+        # structured-output clients render only structuredContent, and
+        # a bare empty rows list reads as "no features inside".
+        assert structured["caveats"][0]["code"] == "container_no_match"
+        assert "COUNCIL='nope'" in structured["caveats"][0]["message"]
+
+
+class TestStructuredRowDates:
+    """Date fields must render in the STRUCTURED rows, not only the
+    markdown half -- and on the return_geometry (GeoJSON) path too,
+    since MOA hosted services return epoch ms there as well."""
+
+    @pytest.fixture
+    def plugin(self, anchorage_config):
+        p = AnchorageGISPlugin(anchorage_config)
+        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        return p
+
+    def test_structured_rows_render_dates(self, plugin):
+        records = [
+            {"Parcel_ID": "00908111000", "PUBDATE": 1787529600000}
+        ]
+        text, structured = plugin._format_query_results(
+            records, 25, total_count=1, date_fields={"PUBDATE"}
+        )
+        assert structured["rows"][0]["PUBDATE"] == "2026-08-24"
+        assert "2026-08-24" in text
+
+    def test_epoch_opt_out_leaves_raw(self, plugin):
+        # date_format='epoch' callers pass date_fields=None.
+        records = [
+            {"Parcel_ID": "00908111000", "PUBDATE": 1787529600000}
+        ]
+        _, structured = plugin._format_query_results(
+            records, 25, total_count=1, date_fields=None
+        )
+        assert structured["rows"][0]["PUBDATE"] == 1787529600000
+
+    def test_iso_string_passes_through_unharmed(self, plugin):
+        # A server that already returns ISO strings is a no-op.
+        records = [{"PUBDATE": "2026-08-24"}]
+        _, structured = plugin._format_query_results(
+            records, 25, total_count=1, date_fields={"PUBDATE"}
+        )
+        assert structured["rows"][0]["PUBDATE"] == "2026-08-24"
 
 
 class TestPrivateDataSurface:
@@ -4889,6 +4934,48 @@ class TestFootprintForParcel:
         p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
         p.client = AsyncMock()
         return p
+
+    # -- ambiguous match: candidates must be in the STRUCTURED half --
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_match_lists_candidates_structured(
+        self, plugin
+    ):
+        two = [
+            {"attributes": _fp_parcel_attrs(
+                Parcel_ID="00908111000",
+                Parcel_Address="3600 DENALI ST",
+            )},
+            {"attributes": _fp_parcel_attrs(
+                Parcel_ID="00908111001",
+                Parcel_Address="3600 DENALI ST",
+                Condo_Unit_Number="1",
+            )},
+        ]
+        with patch.object(
+            plugin,
+            "_resolve_layer_url",
+            new_callable=AsyncMock,
+            return_value="https://services2.arcgis.com/x/FeatureServer/0",
+        ), patch.object(
+            plugin,
+            "_request_json_with_retry",
+            new_callable=AsyncMock,
+            return_value={"features": two},
+        ):
+            text, structured = await plugin._footprint_for_parcel(
+                {"parcel_id": "009-081-11"}
+            )
+        assert structured["result"] is None
+        caveat = structured["caveats"][0]
+        assert caveat["code"] == "parcel_ambiguous"
+        # Structured-output clients render only structuredContent, so
+        # the candidate Parcel_IDs must live there, not just in the
+        # markdown half.
+        ids = [c["parcel_id"] for c in caveat["candidates"]]
+        assert ids == ["00908111000", "00908111001"]
+        assert "00908111000" in caveat["message"]
+        assert "00908111000" in text
 
     # -- zoning normalization / cap table --
 

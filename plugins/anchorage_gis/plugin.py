@@ -655,10 +655,10 @@ class AnchorageGISPlugin(DataPlugin):
                 "rows": rendered_rows,
                 "caveats": caveats,
             }
-            # Raw values keep their JSON types, so dates arrive as epoch
-            # milliseconds and coded fields as their stored codes. Ship
-            # the domain map alongside so a consumer can decode without
-            # a second round-trip.
+            # Coded fields keep their stored codes; ship the domain map
+            # alongside so a consumer can decode without a second
+            # round-trip. (Date fields are rendered into the rows
+            # themselves -- see the row loop.)
             if coded_domains:
                 out["coded_domains"] = {
                     field: {str(code): label for code, label in mapping.items()}
@@ -851,6 +851,16 @@ class AnchorageGISPlugin(DataPlugin):
         rows: List[Dict[str, Any]] = []
         for record in records:
             row = {k: v for k, v in record.items() if k != "__geometry__"}
+            # Dates render in the structured rows too: clients that
+            # consume only structuredContent otherwise see raw epoch
+            # milliseconds while the docs promise YYYY-MM-DD (the
+            # date_format='epoch' path passes date_fields=None and is
+            # unaffected). Coded fields stay raw here on purpose --
+            # coded_domains ships alongside as the decode map.
+            if date_fields:
+                for k in date_fields:
+                    if k in row:
+                        row[k] = self._ms_to_iso_smart(row[k])
             geometry = record.get("__geometry__")
             if geometry is not None:
                 # Full geometry, not the character-clipped rendering the
@@ -3903,6 +3913,7 @@ class AnchorageGISPlugin(DataPlugin):
                 buffer_label=buffer_label,
                 fetched=len(source_features),
                 max_source=max_source,
+                agg_where=agg_where,
             )
             for caveat in agg_caveats:
                 lines += ["", f"_{caveat['message']}_"]
@@ -3944,6 +3955,7 @@ class AnchorageGISPlugin(DataPlugin):
             buffer_label=buffer_label,
             fetched=len(source_features),
             max_source=max_source,
+            agg_where=agg_where,
         )
         # The italic notes and the structured caveats are rendered from the
         # same list, so the two can never disagree about what qualified a
@@ -3981,6 +3993,7 @@ class AnchorageGISPlugin(DataPlugin):
         buffer_label: str,
         fetched: int,
         max_source: int,
+        agg_where: str = "1=1",
     ) -> None:
         """Append the qualifications that apply to an aggregation result.
 
@@ -4007,15 +4020,29 @@ class AnchorageGISPlugin(DataPlugin):
                 if buffer_m > 0
                 else "outside every aggregation polygon"
             )
+            # With a narrowed agg_where, most sources falling outside
+            # the selected buckets is EXPECTED, not a data-quality
+            # signal -- the old wording sent models chasing phantom
+            # stray-coordinate problems.
+            if agg_where != "1=1":
+                diagnosis = (
+                    f"Expected when bucketing into a subset: agg_where "
+                    f"{agg_where!r} narrows the aggregation polygons, "
+                    f"and sources outside that subset count here."
+                )
+            else:
+                diagnosis = (
+                    "This usually indicates data-quality signal "
+                    "(stray coordinates, records outside the city "
+                    "boundary)."
+                )
             caveats.append(
                 {
                     "code": "unmatched_source_features",
                     "count": unmatched_count,
                     "message": (
                         f"{unmatched_count:,} source feature(s) fell "
-                        f"{outside_what}. This usually indicates "
-                        f"data-quality signal (stray coordinates, records "
-                        f"outside the city boundary)."
+                        f"{outside_what}. {diagnosis}"
                     ),
                 }
             )
@@ -4631,24 +4658,45 @@ class AnchorageGISPlugin(DataPlugin):
                     "truncated": False,
                 },
                 "rows": [],
-                "caveats": [],
+                # The explanation must be a structured caveat, not just
+                # the markdown half: structured-output clients render
+                # only structuredContent, and a bare empty rows list
+                # here reads as "no features inside", which is wrong --
+                # the CONTAINER lookup failed.
+                "caveats": [
+                    {
+                        "code": "container_no_match",
+                        "count": 0,
+                        "message": (
+                            f"container_where {container_where!r} "
+                            f"matched 0 polygons on container layer "
+                            f"{container_item_id} -- the container "
+                            f"lookup failed, so nothing was filtered. "
+                            f"Check the value with get_distinct_values "
+                            f"on the container field."
+                        ),
+                    }
+                ],
             }
 
         # Delegate the actual spatial query to spatial_query_polygon's
         # filter-item pathway so we get server-side intersection and
         # consistent result formatting with the rest of the plugin.
-        records = await self.spatial_query_polygon(
-            source_item_id,
-            filter_geometry=None,
-            filter_item_id=container_item_id,
-            filter_where=validated_container_where,
-            spatial_rel="intersects",
-            filters={
-                "where": source_where,
-                "out_fields": out_fields,
-            },
-            limit=effective_limit,
-            return_geometry=return_geometry,
+        records, source_meta = await asyncio.gather(
+            self.spatial_query_polygon(
+                source_item_id,
+                filter_geometry=None,
+                filter_item_id=container_item_id,
+                filter_where=validated_container_where,
+                spatial_rel="intersects",
+                filters={
+                    "where": source_where,
+                    "out_fields": out_fields,
+                },
+                limit=effective_limit,
+                return_geometry=return_geometry,
+            ),
+            self._safe_layer_meta(source_item_id),
         )
 
         city = self.plugin_config.city_name
@@ -4684,7 +4732,11 @@ class AnchorageGISPlugin(DataPlugin):
                 "caveats": [],
             }
         body, structured = self._format_query_results(
-            records, effective_limit, total_count=None, date_fields=None
+            records,
+            effective_limit,
+            total_count=None,
+            date_fields=source_meta.get("date_fields"),
+            coded_domains=source_meta.get("coded_domains"),
         )
         # The shared formatter does not know about the container layer;
         # add that context so the structured result explains what was
@@ -5331,6 +5383,7 @@ class AnchorageGISPlugin(DataPlugin):
                 "one record and re-call with its exact Parcel_ID:_",
                 "",
             ]
+            candidates = []
             for f in features:
                 a = f.get("attributes") or {}
                 unit = a.get("Condo_Unit_Number")
@@ -5340,6 +5393,21 @@ class AnchorageGISPlugin(DataPlugin):
                     f"{a.get('Parcel_Address')}{unit_txt}  "
                     f"({a.get('Land_Use')})"
                 )
+                candidates.append({
+                    "parcel_id": a.get("Parcel_ID"),
+                    "address": a.get("Parcel_Address"),
+                    "unit": unit,
+                    "land_use": a.get("Land_Use"),
+                })
+            # The candidate list must live in the STRUCTURED half too:
+            # structured-output clients render only structuredContent,
+            # so a message saying "the Parcel_IDs listed" with the list
+            # only in the markdown half points at nothing.
+            id_preview = ", ".join(
+                str(c["parcel_id"]) for c in candidates[:8]
+            )
+            if len(candidates) > 8:
+                id_preview += f", ... and {len(candidates) - 8} more"
             return "\n".join(lines), {
                 "query": {"parcel_id": parcel_id},
                 "result": None,
@@ -5349,9 +5417,10 @@ class AnchorageGISPlugin(DataPlugin):
                         "count": len(features),
                         "message": (
                             f"{len(features)} parcels matched "
-                            f"{parcel_id!r}; pass one of the exact "
-                            f"Parcel_IDs listed to get a single answer."
+                            f"{parcel_id!r}; re-call with one exact "
+                            f"Parcel_ID: {id_preview}."
                         ),
+                        "candidates": candidates,
                     }
                 ],
             }
@@ -6562,6 +6631,16 @@ class AnchorageGISPlugin(DataPlugin):
                     "minimum": 0,
                     "description": "The cap that was reached, if any.",
                 },
+                "candidates": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": (
+                        "Disambiguation records (e.g. the parcel "
+                        "matches behind a parcel_ambiguous caveat), "
+                        "so the caller can pick one without parsing "
+                        "the message."
+                    ),
+                },
             },
         },
     }
@@ -7540,10 +7619,9 @@ class AnchorageGISPlugin(DataPlugin):
                             "enum": ["date", "epoch"],
                             "description": (
                                 "'date' (default) returns date fields as "
-                                "YYYY-MM-DD; 'epoch' keeps raw millisecond "
-                                "timestamps for data pipeline use. "
-                                "Ignored when return_geometry=true "
-                                "(GeoJSON responses already use ISO 8601)."
+                                "YYYY-MM-DD (datetimes as ISO 8601); "
+                                "'epoch' keeps raw millisecond "
+                                "timestamps for data pipeline use."
                             ),
                             "default": "date",
                         },
@@ -8465,12 +8543,15 @@ class AnchorageGISPlugin(DataPlugin):
                 results = await asyncio.gather(*parallel_tasks)
                 records = results[0]
                 total_count = results[1]
-                # When return_geometry=true the backend is f=geojson,
-                # which renders dates as ISO strings already -- skip the
-                # epoch-to-date conversion path.
+                # NOTE: f=geojson does NOT render dates as ISO strings
+                # on MOA hosted services (verified live: epoch ms in
+                # GeoJSON properties), so the conversion applies to the
+                # return_geometry path too. _ms_to_iso_smart passes
+                # non-numeric values through, so a server that did
+                # return ISO strings would be unharmed.
                 date_fields = (
                     quick_meta.get("date_fields")
-                    if (date_format != "epoch" and not return_geometry)
+                    if date_format != "epoch"
                     else None
                 )
 
@@ -8613,17 +8694,17 @@ class AnchorageGISPlugin(DataPlugin):
                     ),
                     self._safe_layer_meta(item_id),
                 )
-                # return_geometry=True uses f=geojson which renders
-                # dates as ISO strings server-side, so skip our
-                # epoch->ISO path. Also skip coded-domain decoding in
-                # the GeoJSON branch since downstream tooling expects
-                # the original codes.
-                if return_geometry:
-                    date_fields = None
-                    coded_domains = None
-                else:
-                    date_fields = layer_meta.get("date_fields")
-                    coded_domains = layer_meta.get("coded_domains")
+                # Dates convert in BOTH branches: f=geojson does NOT
+                # render dates as ISO strings on MOA hosted services
+                # (verified live -- epoch ms in GeoJSON properties).
+                # Coded-domain decoding still skips the GeoJSON branch,
+                # where downstream tooling expects the original codes.
+                date_fields = layer_meta.get("date_fields")
+                coded_domains = (
+                    None
+                    if return_geometry
+                    else layer_meta.get("coded_domains")
+                )
                 if not records:
                     text = (
                         f"No features in item `{item_id}` match the "
