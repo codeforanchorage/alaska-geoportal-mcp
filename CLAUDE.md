@@ -134,10 +134,10 @@ Terraform and the deploy script are configured for `alaska-geoportal-prod` /
 `alaska-geoportal-staging` (workspaces, Lambda names, tfstate bucket
 `alaska-geoportal-opencontext-tfstate`, custom domain
 `alaska-geoportal.codeforanchorage.org`) but **nothing has been applied yet**.
-Before the first `./scripts/deploy.sh -e prod`: run `scripts/setup-backend.sh`
-(or create the bucket by hand), create the alarms SNS topic and set
-`alarm_sns_topic_arn`, and add an `alaska-geoportal` key to mcp-stats'
-`fleet_waf_members` (see the TODOs in `terraform/aws/prod.tfvars`).
+The tfstate bucket and the alarms SNS topic were created by CLI on
+2026-09-15. Before the first `./scripts/deploy.sh -e prod`, apply the
+`alaska-geoportal` entry in mcp-stats' `fleet_waf_members` (see the TODO in
+`terraform/aws/prod.tfvars`) and set up DNS/ACM for the custom domain.
 
 ## CI
 

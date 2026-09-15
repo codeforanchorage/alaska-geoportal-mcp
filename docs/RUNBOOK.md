@@ -3,8 +3,9 @@
 > **Status: NOT YET DEPLOYED.** This runbook is carried over from the
 > Anchorage fork with names updated. Fill in the API Gateway id once
 > `./scripts/deploy.sh -e prod` has run, and complete the go-live TODOs in
-> `terraform/aws/prod.tfvars` (S3 state bucket, alarms SNS topic, mcp-stats
-> `fleet_waf_members` entry) first.
+> `terraform/aws/prod.tfvars` first. Done 2026-09-15: S3 state bucket
+> `alaska-geoportal-opencontext-tfstate` and the alarms SNS topic exist.
+> Still open: apply the mcp-stats `fleet_waf_members` entry, DNS/ACM.
 
 Prod stack (planned): Lambda `alaska-geoportal-mcp-prod`, API Gateway
 `<TBD>` (stage `prod`), us-west-2, account `420839047325`.
@@ -84,9 +85,9 @@ spike, that limit and the stage throttle are the levers.
 
 - **CloudWatch alarms** (errors, throttles, duration>80%, apigw 5xx)
   notify the SNS topic in `alarm_sns_topic_arn` (`prod.tfvars`) → email.
-  The topic is created by CLI, outside Terraform; it does not exist yet
-  for this fork, so alarms are dashboard-only until it is created and
-  the ARN pasted in.
+  The topic (`alaska-geoportal-mcp-prod-alarms`) was created by CLI on
+  2026-09-15, outside Terraform, with an email subscription that must be
+  confirmed from the inbox before alarms deliver.
 - **AWS Budget** `mcp-fleet-monthly`: $100/mo, filtered on tag
   `Project=mcp-server` (stamped on this stack by provider
   `default_tags`). Alerts at $25 actual, $80 actual, $100 forecast.

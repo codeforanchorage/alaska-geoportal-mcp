@@ -44,9 +44,9 @@ waf_rate_limit_per_5min = 300
 
 # CloudWatch alarms (errors, throttles, 5xx, probing, duration) notify this
 # topic; email subscription on it. Empty string = alarms are dashboard-only.
-# TODO(go-live): create the `alaska-geoportal-mcp-prod-alarms` SNS topic by
-# hand (as was done for the Anchorage fork) and paste its ARN here.
-alarm_sns_topic_arn = ""
+# Topic created by CLI on 2026-09-15 (outside Terraform, like the other
+# MCPs); email subscription pending confirmation at creation time.
+alarm_sns_topic_arn = "arn:aws:sns:us-west-2:420839047325:alaska-geoportal-mcp-prod-alarms"
 
 # Hardened, API-key-gated /mcp-gcc route for an M365 GCC Copilot consumer.
 # Off for this fork: no GCC consumer has been identified for the statewide
