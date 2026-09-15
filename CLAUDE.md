@@ -141,7 +141,9 @@ Before the first `./scripts/deploy.sh -e prod`: run `scripts/setup-backend.sh`
 
 ## CI
 
-There is no GitHub Actions workflow checked in on this fork. Run
-`uv run ruff check core/ plugins/ server/ tests/` and `uv run pytest tests/ -n auto`
+`.github/workflows/ci.yml` runs on pushes and PRs to `main`: ruff lint, a
+validation of `config-alaska-geoportal.yaml` (exactly one plugin enabled),
+pip-audit, gofmt, pytest with the 80% coverage gate, and Go tests. Run
+`uv run ruff check core/ plugins/ server/ tests/` and `uv run pytest tests/ -n auto --cov=core --cov=plugins --cov-fail-under=80`
 locally before pushing. Smoke against the live org: `PYTHONIOENCODING=utf-8 python scripts/local_server.py`
 then `SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py`; see `SMOKE.md`.

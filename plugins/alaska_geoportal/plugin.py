@@ -1046,12 +1046,14 @@ class AlaskaGeoportalPlugin(DataPlugin):
         # picks the more specific one. These also drive the grain
         # warning's follow-up suggestion when query_data hits a
         # polyline layer.
-        "Trail_Name", "TRAIL_NAME", "TrailName",
-        "Road_Name", "ROAD_NAME", "RoadName",
-        "Street_Name", "STREET_NAME", "StreetName",
-        "Route_Name", "ROUTE_NAME", "RouteName",
+        # State layers are often all-lowercase (e.g. Forestry Roads'
+        # `road_name`), so each spelling has a lowercase twin.
+        "Trail_Name", "TRAIL_NAME", "TrailName", "trail_name",
+        "Road_Name", "ROAD_NAME", "RoadName", "road_name",
+        "Street_Name", "STREET_NAME", "StreetName", "street_name",
+        "Route_Name", "ROUTE_NAME", "RouteName", "route_name",
         # Generic record-name fields (next-best fallback).
-        "Name", "NAME", "FullName", "Full_Name",
+        "Name", "NAME", "name", "FullName", "Full_Name",
         "Site_Name", "SiteName",
         "Site_Address", "Address", "ADDRESS",
         "Title", "TITLE",
