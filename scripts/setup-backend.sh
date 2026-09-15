@@ -14,7 +14,9 @@ if [ -z "$AWS_ACCOUNT_ID" ]; then
 fi
 
 # Generate bucket name
-BUCKET_NAME="boston-opencontext-tfstate-${AWS_ACCOUNT_ID}-${AWS_REGION}"
+# Must match terraform/aws/backend.tf exactly (the fleet convention is one
+# fixed bucket per MCP, not an account/region-suffixed name).
+BUCKET_NAME="alaska-geoportal-opencontext-tfstate"
 TABLE_NAME="terraform-state-lock"
 
 echo "AWS Account ID: $AWS_ACCOUNT_ID"

@@ -18,8 +18,8 @@ import pytest
 
 from core.interfaces import ToolInputError
 from core.mcp_server import MCPServer
-from plugins.anchorage_gis.config_schema import AnchorageGISPluginConfig
-from plugins.anchorage_gis.plugin import AnchorageGISPlugin
+from plugins.alaska_geoportal.config_schema import AlaskaGeoportalPluginConfig
+from plugins.alaska_geoportal.plugin import AlaskaGeoportalPlugin
 from plugins.arcgis.where_validator import (
     OrderByValidator,
     OutFieldsValidator,
@@ -31,14 +31,14 @@ from plugins.arcgis.where_validator import (
 def plugin():
     cfg = {
         "portal_base_url": "https://example.maps.arcgis.com/sharing/rest",
-        "gallery_group_id": "abc123",
+        "gallery_group_ids": ["a5055ea72899425c8cc4e01b32658a45"],
         "org_id": "org123",
-        "city_name": "Municipality of Anchorage",
+        "city_name": "State of Alaska",
         "gallery_url": "https://example.com/gallery",
         "timeout": 30,
     }
-    p = AnchorageGISPlugin(cfg)
-    p.plugin_config = AnchorageGISPluginConfig(**cfg)
+    p = AlaskaGeoportalPlugin(cfg)
+    p.plugin_config = AlaskaGeoportalPluginConfig(**cfg)
     return p
 
 
@@ -87,7 +87,7 @@ class TestNotInferredFromValueError:
         response -- a genuine upstream fault whose traceback we want."""
         import inspect
 
-        src = inspect.getsource(AnchorageGISPlugin)
+        src = inspect.getsource(AlaskaGeoportalPlugin)
         # Every remaining `raise ValueError` in the plugin must be an
         # upstream fault, not caller input.
         for line in src.splitlines():

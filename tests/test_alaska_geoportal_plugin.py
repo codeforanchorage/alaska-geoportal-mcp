@@ -1,4 +1,4 @@
-"""Tests for Anchorage GIS plugin.
+"""Tests for the Alaska Geoportal plugin.
 
 Verifies plugin initialization, tool definitions, tool execution,
 error handling, and data formatting.
@@ -11,22 +11,22 @@ import httpx
 from pydantic import ValidationError
 
 from core.interfaces import PluginType
-from plugins.anchorage_gis.config_schema import AnchorageGISPluginConfig
-from plugins.anchorage_gis.plugin import AnchorageGISPlugin
+from plugins.alaska_geoportal.config_schema import AlaskaGeoportalPluginConfig
+from plugins.alaska_geoportal.plugin import AlaskaGeoportalPlugin
 
 
 @pytest.fixture
-def anchorage_config():
-    """Standard Anchorage GIS plugin configuration."""
+def geoportal_config():
+    """Standard Alaska Geoportal plugin configuration."""
     return {
-        "portal_base_url": "https://muniorg.maps.arcgis.com/sharing/rest",
-        "gallery_group_id": "c34ed10758ec4f4eb8aa6826ee5be3ff",
-        "org_id": "Ce3DhLRthdwbHlfF",
-        "city_name": "Municipality of Anchorage",
-        "gallery_url": (
-            "https://muniorg.maps.arcgis.com/apps/instant/filtergallery/"
-            "index.html?appid=4dac7569f1cc4beb9f22ce168c899a30"
-        ),
+        "portal_base_url": "https://soa-dnr.maps.arcgis.com/sharing/rest",
+        "gallery_group_ids": [
+            "a5055ea72899425c8cc4e01b32658a45",
+            "18028130a7a14132bd922bcd830f27c6",
+        ],
+        "org_id": "7HDiw78fcUiM2BWn",
+        "city_name": "State of Alaska",
+        "gallery_url": "https://gis.data.alaska.gov/search",
         "timeout": 30,
     }
 
@@ -35,9 +35,9 @@ def anchorage_config():
 
 
 class TestPluginAttributes:
-    def test_plugin_attributes(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        assert plugin.plugin_name == "anchorage_gis"
+    def test_plugin_attributes(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        assert plugin.plugin_name == "alaska_geoportal"
         assert plugin.plugin_type == PluginType.OPEN_DATA
         assert plugin.plugin_version == "1.0.0"
 
@@ -47,8 +47,8 @@ class TestPluginAttributes:
 
 class TestInitialization:
     @pytest.mark.asyncio
-    async def test_initialize_success(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
+    async def test_initialize_success(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -65,8 +65,8 @@ class TestInitialization:
             assert plugin._initialized is True
 
     @pytest.mark.asyncio
-    async def test_initialize_failure(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
+    async def test_initialize_failure(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -81,8 +81,8 @@ class TestInitialization:
             assert plugin._initialized is False
 
     @pytest.mark.asyncio
-    async def test_initialize_portal_error(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
+    async def test_initialize_portal_error(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
@@ -104,21 +104,22 @@ class TestInitialization:
 
 
 class TestGetTools:
-    def test_get_tools_returns_all_tools(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_get_tools_returns_all_tools(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tools = plugin.get_tools()
 
-        assert len(tools) == 16
+        assert len(tools) == 14
         tool_names = [t.name for t in tools]
-        assert "footprint_for_parcel" in tool_names
+        # The two MOA-only parcel tools were dropped in the statewide fork.
+        assert "footprint_for_parcel" not in tool_names
+        assert "find_parcel" not in tool_names
         assert "find_gis_content" in tool_names
         assert "browse_gallery" in tool_names
         assert "search_spatial_layers" in tool_names
         assert "get_item_details" in tool_names
         assert "get_layer_schema" in tool_names
         assert "get_distinct_values" in tool_names
-        assert "find_parcel" in tool_names
         assert "search_layers_by_field" in tool_names
         assert "query_data" in tool_names
         assert "spatial_query_point" in tool_names
@@ -128,22 +129,22 @@ class TestGetTools:
         assert "filter_by_polygon" in tool_names
         assert "find_features_spanning_classifications" in tool_names
 
-    def test_most_tools_include_city_name(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_most_tools_include_city_name(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tools = plugin.get_tools()
 
         # Most tools include city name; schema tools are generic
         city_tools = [
-            t for t in tools if "Municipality of Anchorage" in t.description
+            t for t in tools if "State of Alaska" in t.description
         ]
         assert len(city_tools) >= 5
 
-    def test_all_tools_marked_read_only(self, anchorage_config):
+    def test_all_tools_marked_read_only(self, geoportal_config):
         """Every tool in this read-only plugin advertises readOnlyHint so
         clients (e.g. M365 Copilot) can skip per-call confirmation."""
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tools = plugin.get_tools()
 
         assert tools, "expected at least one tool"
@@ -155,12 +156,12 @@ class TestGetTools:
             # readOnlyHint is false, so it must not be advertised here.
             assert "idempotentHint" not in t.annotations, t.name
 
-    def test_every_tool_has_a_title(self, anchorage_config):
+    def test_every_tool_has_a_title(self, geoportal_config):
         """`title` is the display name clients show instead of the prefixed
         wire name. A tool added without an entry in TOOL_TITLES would fall
         back to that identifier silently, so fail loudly instead."""
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tools = plugin.get_tools()
 
         assert tools, "expected at least one tool"
@@ -168,7 +169,7 @@ class TestGetTools:
             assert t.title, f"{t.name} has no title (add it to TOOL_TITLES)"
 
         # And no stale keys left behind by a renamed or removed tool.
-        stale = set(AnchorageGISPlugin.TOOL_TITLES) - {t.name for t in tools}
+        stale = set(AlaskaGeoportalPlugin.TOOL_TITLES) - {t.name for t in tools}
         assert not stale, f"TOOL_TITLES has entries for missing tools: {stale}"
 
 
@@ -177,9 +178,9 @@ class TestGetTools:
 
 class TestExecuteTool:
     @pytest.mark.asyncio
-    async def test_execute_tool_unknown(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_tool_unknown(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         result = await plugin.execute_tool("unknown_tool", {})
 
@@ -187,9 +188,9 @@ class TestExecuteTool:
         assert "Unknown tool" in result.error_message
 
     @pytest.mark.asyncio
-    async def test_execute_find_gis_content(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_find_gis_content(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin,
@@ -220,9 +221,9 @@ class TestExecuteTool:
         assert "Flood Zone Map" in result.content[0]["text"]
 
     @pytest.mark.asyncio
-    async def test_execute_browse_gallery(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_browse_gallery(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin,
@@ -247,9 +248,9 @@ class TestExecuteTool:
         assert "Trails Map" in result.content[0]["text"]
 
     @pytest.mark.asyncio
-    async def test_execute_get_item_details(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_get_item_details(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin,
@@ -278,9 +279,9 @@ class TestExecuteTool:
         assert "Zoning Map" in result.content[0]["text"]
 
     @pytest.mark.asyncio
-    async def test_execute_get_item_details_missing_id(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_get_item_details_missing_id(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         result = await plugin.execute_tool("get_item_details", {})
 
@@ -288,9 +289,9 @@ class TestExecuteTool:
         assert "item_id is required" in result.error_message
 
     @pytest.mark.asyncio
-    async def test_execute_search_spatial_layers(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_search_spatial_layers(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin,
@@ -316,14 +317,14 @@ class TestExecuteTool:
 
     @pytest.mark.asyncio
     async def test_layer_section_splits_queryable_from_other(
-        self, anchorage_config
+        self, geoportal_config
     ):
         # Regression for the trails search where the model picked a
         # non-queryable Web Map. Subdivide the layers block so Feature
         # /Map Services appear under a clear QUERYABLE header above
         # Web Maps and downloadable data.
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin, "_search_gallery", new_callable=AsyncMock,
@@ -377,16 +378,16 @@ class TestExecuteTool:
 
     @pytest.mark.asyncio
     async def test_ambiguity_warning_when_multiple_queryable(
-        self, anchorage_config
+        self, geoportal_config
     ):
         # Regression for the trails count: ParksRec_Trails_Merged
         # (1,123) and ADNR_USFS_Trails_Hosted (124) are both valid
-        # answers to "how many trails in Anchorage?". When multiple
+        # answers to "how many trails in Alaska?". When multiple
         # queryable layers match the topic, surface a warning so the
         # model reports a breakdown or asks the user instead of
         # silently picking the first one.
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin, "_search_gallery", new_callable=AsyncMock,
@@ -432,10 +433,10 @@ class TestExecuteTool:
 
     @pytest.mark.asyncio
     async def test_execute_search_spatial_layers_missing_query(
-        self, anchorage_config
+        self, geoportal_config
     ):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         result = await plugin.execute_tool("search_spatial_layers", {})
 
@@ -443,9 +444,9 @@ class TestExecuteTool:
         assert "query is required" in result.error_message
 
     @pytest.mark.asyncio
-    async def test_execute_query_data(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_query_data(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with (
             patch.object(
@@ -484,10 +485,10 @@ class TestExecuteTool:
 
 class TestQueryDataTwoHop:
     @pytest.mark.asyncio
-    async def test_query_data_resolves_service_url(self, anchorage_config):
+    async def test_query_data_resolves_service_url(self, geoportal_config):
         """Verify query_data calls get_dataset first, then queries the service."""
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         mock_client = AsyncMock()
 
@@ -512,7 +513,7 @@ class TestQueryDataTwoHop:
                 "id": "abc123",
                 "title": "Parks",
                 "type": "Feature Service",
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             },
         ) as mock_get_dataset:
             records = await plugin.query_data("abc123", {"where": "1=1"}, 100)
@@ -525,11 +526,11 @@ class TestQueryDataTwoHop:
         assert records[0]["name"] == "Park A"
 
     @pytest.mark.asyncio
-    async def test_query_data_return_geometry_true(self, anchorage_config):
+    async def test_query_data_return_geometry_true(self, geoportal_config):
         """return_geometry=True switches to f=geojson, pins outSR=4326,
         simplifies, and attaches GeoJSON geometry to each record."""
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         mock_client = AsyncMock()
         mock_response = Mock()
@@ -564,7 +565,7 @@ class TestQueryDataTwoHop:
                 "id": "abc123",
                 "title": "Parks",
                 "type": "Feature Service",
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             },
         ):
             records = await plugin.query_data(
@@ -589,11 +590,11 @@ class TestQueryDataTwoHop:
         assert records[0]["__geometry__"]["type"] == "Polygon"
 
     @pytest.mark.asyncio
-    async def test_query_data_default_no_geometry(self, anchorage_config):
+    async def test_query_data_default_no_geometry(self, geoportal_config):
         """Default (return_geometry=False) still uses f=json and returns
         flat attribute dicts — backward compatibility."""
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         mock_client = AsyncMock()
         mock_response = Mock()
@@ -612,7 +613,7 @@ class TestQueryDataTwoHop:
             new_callable=AsyncMock,
             return_value={
                 "type": "Feature Service",
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             },
         ):
             records = await plugin.query_data(
@@ -630,10 +631,10 @@ class TestQueryDataTwoHop:
         assert "__geometry__" not in records[0]
 
     @pytest.mark.asyncio
-    async def test_query_data_auto_appends_layer_index(self, anchorage_config):
+    async def test_query_data_auto_appends_layer_index(self, geoportal_config):
         """When service_url ends with /FeatureServer (no layer), /0 is appended."""
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         mock_client = AsyncMock()
         mock_response = Mock()
@@ -654,7 +655,7 @@ class TestQueryDataTwoHop:
                 "id": "abc123",
                 "title": "Trails",
                 "type": "Feature Service",
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer",
             },
         ):
             records = await plugin.query_data("abc123", {"where": "1=1"}, 100)
@@ -690,9 +691,9 @@ def _spatial_client_mock(layer_meta, query_features):
 
 class TestSpatialQueryPoint:
     @pytest.mark.asyncio
-    async def test_point_in_polygon_happy_path(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_point_in_polygon_happy_path(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         plugin.client = _spatial_client_mock(
             layer_meta={
                 "geometryType": "esriGeometryPolygon",
@@ -712,7 +713,7 @@ class TestSpatialQueryPoint:
                 "id": "abc123",
                 "title": "Parks",
                 "type": "Feature Service",
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             },
         ):
             records = await plugin.spatial_query_point(
@@ -733,9 +734,9 @@ class TestSpatialQueryPoint:
         assert params["returnGeometry"] == "false"
 
     @pytest.mark.asyncio
-    async def test_rejects_non_polygon_layer(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_rejects_non_polygon_layer(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         plugin.client = _spatial_client_mock(
             layer_meta={
                 "geometryType": "esriGeometryPoint",
@@ -753,7 +754,7 @@ class TestSpatialQueryPoint:
                 "id": "abc123",
                 "title": "Hydrants",
                 "type": "Feature Service",
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             },
         ):
             with pytest.raises(ValueError, match="polygon layer"):
@@ -762,9 +763,9 @@ class TestSpatialQueryPoint:
                 )
 
     @pytest.mark.asyncio
-    async def test_rejects_out_of_range_lon(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_rejects_out_of_range_lon(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         plugin.client = AsyncMock()
 
         with pytest.raises(ValueError, match="lon out of range"):
@@ -773,9 +774,9 @@ class TestSpatialQueryPoint:
             )
 
     @pytest.mark.asyncio
-    async def test_rejects_out_of_range_lat(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_rejects_out_of_range_lat(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         plugin.client = AsyncMock()
 
         with pytest.raises(ValueError, match="lat out of range"):
@@ -784,9 +785,9 @@ class TestSpatialQueryPoint:
             )
 
     @pytest.mark.asyncio
-    async def test_rejects_non_numeric_coords(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_rejects_non_numeric_coords(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         plugin.client = AsyncMock()
 
         with pytest.raises(ValueError, match="numeric"):
@@ -795,9 +796,9 @@ class TestSpatialQueryPoint:
             )
 
     @pytest.mark.asyncio
-    async def test_execute_tool_spatial_query_point(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    async def test_execute_tool_spatial_query_point(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         with patch.object(
             plugin,
@@ -820,10 +821,10 @@ class TestSpatialQueryPoint:
 
     @pytest.mark.asyncio
     async def test_execute_tool_spatial_query_missing_coords(
-        self, anchorage_config
+        self, geoportal_config
     ):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         result = await plugin.execute_tool(
             "spatial_query_point", {"item_id": "abc123"}
@@ -863,23 +864,23 @@ class TestGeometryHelpers:
 
     def test_ring_contains_point_inside(self):
         ring = [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]
-        assert AnchorageGISPlugin._ring_contains_point(ring, (2, 2)) is True
+        assert AlaskaGeoportalPlugin._ring_contains_point(ring, (2, 2)) is True
 
     def test_ring_contains_point_outside(self):
         ring = [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]
-        assert AnchorageGISPlugin._ring_contains_point(ring, (5, 2)) is False
+        assert AlaskaGeoportalPlugin._ring_contains_point(ring, (5, 2)) is False
 
     def test_polygon_with_hole_treats_hole_as_outside(self):
         # Point inside the hole is NOT inside the polygon
         assert (
-            AnchorageGISPlugin._polygon_contains_point(
+            AlaskaGeoportalPlugin._polygon_contains_point(
                 self.SQUARE["coordinates"], (2, 2)
             )
             is False
         )
         # Point in the annulus IS inside
         assert (
-            AnchorageGISPlugin._polygon_contains_point(
+            AlaskaGeoportalPlugin._polygon_contains_point(
                 self.SQUARE["coordinates"], (0.5, 0.5)
             )
             is True
@@ -893,46 +894,46 @@ class TestGeometryHelpers:
                 [[[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]]],
             ],
         }
-        assert AnchorageGISPlugin._geometry_contains_point(geom, (0.5, 0.5))
-        assert AnchorageGISPlugin._geometry_contains_point(geom, (10.5, 10.5))
-        assert not AnchorageGISPlugin._geometry_contains_point(geom, (5, 5))
+        assert AlaskaGeoportalPlugin._geometry_contains_point(geom, (0.5, 0.5))
+        assert AlaskaGeoportalPlugin._geometry_contains_point(geom, (10.5, 10.5))
+        assert not AlaskaGeoportalPlugin._geometry_contains_point(geom, (5, 5))
 
     def test_geometry_centroid_square(self):
         square = {
             "type": "Polygon",
             "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
         }
-        cx, cy = AnchorageGISPlugin._geometry_centroid(square)
+        cx, cy = AlaskaGeoportalPlugin._geometry_centroid(square)
         assert abs(cx - 1.0) < 1e-9
         assert abs(cy - 1.0) < 1e-9
 
     def test_representative_point_l_shape_is_inside(self):
-        pt = AnchorageGISPlugin._geometry_representative_point(self.L_SHAPE)
+        pt = AlaskaGeoportalPlugin._geometry_representative_point(self.L_SHAPE)
         assert pt is not None
-        assert AnchorageGISPlugin._geometry_contains_point(self.L_SHAPE, pt)
+        assert AlaskaGeoportalPlugin._geometry_contains_point(self.L_SHAPE, pt)
 
     def test_feature_to_point_uses_point_geometry_directly(self):
         geom = {"type": "Point", "coordinates": [-149.9, 61.2]}
-        assert AnchorageGISPlugin._feature_to_point(geom, "auto") == (
+        assert AlaskaGeoportalPlugin._feature_to_point(geom, "auto") == (
             -149.9,
             61.2,
         )
 
     def test_feature_to_point_auto_falls_back_when_centroid_outside(self):
-        pt = AnchorageGISPlugin._feature_to_point(self.L_SHAPE, "auto")
+        pt = AlaskaGeoportalPlugin._feature_to_point(self.L_SHAPE, "auto")
         assert pt is not None
-        assert AnchorageGISPlugin._geometry_contains_point(self.L_SHAPE, pt)
+        assert AlaskaGeoportalPlugin._geometry_contains_point(self.L_SHAPE, pt)
 
     # ── Polyline support ─────────────────────────────────────────────────
 
     def test_polyline_midpoint_straight_line(self):
         coords = [[0.0, 0.0], [10.0, 0.0]]
-        assert AnchorageGISPlugin._polyline_midpoint(coords) == (5.0, 0.0)
+        assert AlaskaGeoportalPlugin._polyline_midpoint(coords) == (5.0, 0.0)
 
     def test_polyline_midpoint_multi_segment(self):
         # Three equal-length segments along x — midpoint is at x=1.5.
         coords = [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]]
-        mx, my = AnchorageGISPlugin._polyline_midpoint(coords)
+        mx, my = AlaskaGeoportalPlugin._polyline_midpoint(coords)
         assert abs(mx - 1.5) < 1e-9
         assert abs(my) < 1e-9
 
@@ -940,18 +941,18 @@ class TestGeometryHelpers:
         # Right-angle bend: 1 unit east, then 1 unit north. Total length 2,
         # midpoint at length 1 = exactly the corner vertex.
         coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]
-        assert AnchorageGISPlugin._polyline_midpoint(coords) == (1.0, 0.0)
+        assert AlaskaGeoportalPlugin._polyline_midpoint(coords) == (1.0, 0.0)
 
     def test_polyline_midpoint_unequal_segments(self):
         # 9 units east, then 1 unit east. Midpoint at length 5 is on segment 1.
         coords = [[0.0, 0.0], [9.0, 0.0], [10.0, 0.0]]
-        mx, my = AnchorageGISPlugin._polyline_midpoint(coords)
+        mx, my = AlaskaGeoportalPlugin._polyline_midpoint(coords)
         assert abs(mx - 5.0) < 1e-9
         assert abs(my) < 1e-9
 
     def test_polyline_centroid_straight_line(self):
         coords = [[0.0, 0.0], [4.0, 0.0]]
-        cx, cy = AnchorageGISPlugin._polyline_centroid(coords)
+        cx, cy = AlaskaGeoportalPlugin._polyline_centroid(coords)
         assert abs(cx - 2.0) < 1e-9
         assert abs(cy) < 1e-9
 
@@ -960,7 +961,7 @@ class TestGeometryHelpers:
         # `representative_point` for lines: the length-weighted centroid
         # of an L-bend sits in the corner of the L, not on the line.
         coords = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0]]
-        cx, cy = AnchorageGISPlugin._polyline_centroid(coords)
+        cx, cy = AlaskaGeoportalPlugin._polyline_centroid(coords)
         # Each leg has length 10 with midpoints (5,0) and (10,5), so the
         # length-weighted centroid is (7.5, 2.5) — off both legs.
         assert abs(cx - 7.5) < 1e-9
@@ -973,7 +974,7 @@ class TestGeometryHelpers:
             [[0.0, 0.0], [4.0, 0.0]],
             [[10.0, 10.0], [14.0, 10.0]],
         ]
-        mx, my = AnchorageGISPlugin._multilinestring_midpoint(lines)
+        mx, my = AlaskaGeoportalPlugin._multilinestring_midpoint(lines)
         # At target=4, walker returns (4, 0) (end of first line).
         assert abs(mx - 4.0) < 1e-9
         assert abs(my) < 1e-9
@@ -985,7 +986,7 @@ class TestGeometryHelpers:
             [[0.0, 0.0], [2.0, 0.0]],
             [[10.0, 0.0], [18.0, 0.0]],
         ]
-        mx, my = AnchorageGISPlugin._multilinestring_midpoint(lines)
+        mx, my = AlaskaGeoportalPlugin._multilinestring_midpoint(lines)
         assert abs(mx - 13.0) < 1e-9
         assert abs(my) < 1e-9
 
@@ -997,7 +998,7 @@ class TestGeometryHelpers:
             "type": "LineString",
             "coordinates": [[0.0, 0.0], [10.0, 0.0]],
         }
-        assert AnchorageGISPlugin._feature_to_point(geom, "auto") == (5.0, 0.0)
+        assert AlaskaGeoportalPlugin._feature_to_point(geom, "auto") == (5.0, 0.0)
 
     def test_feature_to_point_linestring_representative_point_returns_midpoint(
         self,
@@ -1006,7 +1007,7 @@ class TestGeometryHelpers:
             "type": "LineString",
             "coordinates": [[0.0, 0.0], [10.0, 0.0]],
         }
-        assert AnchorageGISPlugin._feature_to_point(
+        assert AlaskaGeoportalPlugin._feature_to_point(
             geom, "representative_point"
         ) == (5.0, 0.0)
 
@@ -1015,7 +1016,7 @@ class TestGeometryHelpers:
             "type": "LineString",
             "coordinates": [[0.0, 0.0], [4.0, 0.0]],
         }
-        cx, cy = AnchorageGISPlugin._feature_to_point(geom, "centroid")
+        cx, cy = AlaskaGeoportalPlugin._feature_to_point(geom, "centroid")
         assert abs(cx - 2.0) < 1e-9
         assert abs(cy) < 1e-9
 
@@ -1027,12 +1028,12 @@ class TestGeometryHelpers:
                 [[10.0, 10.0], [14.0, 10.0]],
             ],
         }
-        pt = AnchorageGISPlugin._feature_to_point(geom, "auto")
+        pt = AlaskaGeoportalPlugin._feature_to_point(geom, "auto")
         assert pt is not None  # before the fix this was None — silent skip
 
     def test_feature_to_point_empty_linestring_returns_none(self):
         assert (
-            AnchorageGISPlugin._feature_to_point(
+            AlaskaGeoportalPlugin._feature_to_point(
                 {"type": "LineString", "coordinates": []}, "auto"
             )
             is None
@@ -1045,7 +1046,7 @@ class TestGeometryHelpers:
             "type": "LineString",
             "coordinates": [[5.0, 7.0], [5.0, 7.0], [5.0, 7.0]],
         }
-        assert AnchorageGISPlugin._feature_to_point(geom, "auto") == (5.0, 7.0)
+        assert AlaskaGeoportalPlugin._feature_to_point(geom, "auto") == (5.0, 7.0)
 
 
 # ── aggregate_by_polygon ───────────────────────────────────────────────
@@ -1068,9 +1069,9 @@ _CONTAINER_ID = "c" * 32
 
 class TestAggregateByPolygon:
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -1132,7 +1133,7 @@ class TestAggregateByPolygon:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1173,7 +1174,7 @@ class TestAggregateByPolygon:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1218,7 +1219,7 @@ class TestAggregateByPolygon:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1255,7 +1256,7 @@ class TestAggregateByPolygon:
         ]
 
         resolve = AsyncMock(
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0"
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0"
         )
         meta = AsyncMock(return_value=agg_meta)
         paged = AsyncMock(return_value=features)
@@ -1284,9 +1285,9 @@ class TestAggregateByPolygon:
 
 class TestFilterByPolygon:
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -1303,7 +1304,7 @@ class TestFilterByPolygon:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1338,7 +1339,7 @@ class TestFilterByPolygon:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1383,7 +1384,7 @@ class TestFilterByPolygon:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1429,9 +1430,9 @@ class TestAggregateSecurity:
     potentially untrusted callers. Verify each input surface is clamped down."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     # --- Injection in SQL WHERE clauses ---
@@ -1501,7 +1502,7 @@ class TestAggregateSecurity:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1548,7 +1549,7 @@ class TestAggregateSecurity:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1638,10 +1639,10 @@ class TestAggregateSecurity:
 
     @pytest.mark.asyncio
     async def test_execute_tool_wraps_injection_errors(
-        self, anchorage_config
+        self, geoportal_config
     ):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         result = await plugin.execute_tool(
             "aggregate_by_polygon",
@@ -1666,9 +1667,9 @@ class TestUpstreamLoad:
     cache both serves repeats and refuses unbounded growth."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -1699,7 +1700,7 @@ class TestUpstreamLoad:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1731,7 +1732,7 @@ class TestUpstreamLoad:
         plugin.client.get = AsyncMock(return_value=resp)
 
         features = await plugin._paged_geojson_fetch(
-            "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             where="1=1",
             out_fields="*",
             limit=5000,
@@ -1768,7 +1769,7 @@ class TestUpstreamLoad:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1821,7 +1822,7 @@ class TestUpstreamLoad:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1857,7 +1858,7 @@ class TestUpstreamLoad:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1886,12 +1887,12 @@ class TestUpstreamLoad:
 class TestStructuredRowDates:
     """Date fields must render in the STRUCTURED rows, not only the
     markdown half -- and on the return_geometry (GeoJSON) path too,
-    since MOA hosted services return epoch ms there as well."""
+    since ArcGIS Online hosted services return epoch ms there as well."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     def test_structured_rows_render_dates(self, plugin):
@@ -1929,9 +1930,9 @@ class TestPrivateDataSurface:
     echo raw upstream responses."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -1952,7 +1953,7 @@ class TestPrivateDataSurface:
             plugin,
             "_resolve_layer_url",
             new_callable=AsyncMock,
-            return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+            return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
         ), patch.object(
             plugin,
             "_fetch_layer_meta",
@@ -1986,9 +1987,9 @@ class TestItemOwnership:
     prompt-injection vector against the calling LLM."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     def _make_client(self, item_payload):
@@ -2004,7 +2005,7 @@ class TestItemOwnership:
     async def test_accepts_item_owned_by_configured_org(self, plugin):
         plugin.client = self._make_client({
             "id": "abc12345abc12345abc12345abc12345",
-            "orgId": "Ce3DhLRthdwbHlfF",
+            "orgId": "7HDiw78fcUiM2BWn",
             "title": "Council Districts",
             "type": "Feature Service",
         })
@@ -2044,7 +2045,7 @@ class TestItemOwnership:
     async def test_orgid_match_is_case_insensitive(self, plugin):
         plugin.client = self._make_client({
             "id": "abc12345abc12345abc12345abc12345",
-            "orgId": "ce3dhlrthdwbhlff",
+            "orgId": "7hdiw78fcuim2bwn",
             "title": "Lowercased",
             "type": "Feature Service",
         })
@@ -2059,9 +2060,9 @@ class TestSearchOrgLayersFilter:
     items that don't honor the orgid: filter clause."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -2075,7 +2076,7 @@ class TestSearchOrgLayersFilter:
             "_run_search",
             new_callable=AsyncMock,
             return_value=[
-                {"id": "1" * 32, "orgId": "Ce3DhLRthdwbHlfF", "title": "ours"},
+                {"id": "1" * 32, "orgId": "7HDiw78fcUiM2BWn", "title": "ours"},
                 {"id": "2" * 32, "orgId": _OTHER_ORG, "title": "theirs"},
             ],
         ):
@@ -2113,41 +2114,93 @@ class TestSearchOrgLayersFilter:
 # ── Service URL allowlist ──────────────────────────────────────────────
 
 
+class TestGallerySearchGroups:
+    """The Geoportal catalog is a union of groups, so one portal query
+    must carry every configured id (an OR), not just the first."""
+
+    @pytest.mark.asyncio
+    async def test_all_group_ids_are_ored_in_one_query(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
+        p._run_search = AsyncMock(return_value=[])
+
+        await p._search_gallery("wildfire", 5)
+
+        q = p._run_search.await_args.args[0]
+        for gid in geoportal_config["gallery_group_ids"]:
+            assert f"group:{gid}" in q
+        assert " OR " in q
+        assert q.endswith(" AND wildfire")
+        # The OR-group is parenthesised so the AND binds to the whole
+        # union rather than to the last group only.
+        assert q.startswith("(group:")
+
+    @pytest.mark.asyncio
+    async def test_single_group_needs_no_or(self, geoportal_config):
+        cfg = dict(geoportal_config)
+        cfg["gallery_group_ids"] = [geoportal_config["gallery_group_ids"][0]]
+        p = AlaskaGeoportalPlugin(cfg)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**cfg)
+        p._run_search = AsyncMock(return_value=[])
+
+        await p._search_gallery("", 5)
+
+        q = p._run_search.await_args.args[0]
+        assert q == f"(group:{cfg['gallery_group_ids'][0]})"
+
+
 class TestValidateServiceUrl:
     """Allowlist locks ArcGIS Online traffic to this org's portal and
     services bearing the configured org_id, so the MCP can't be coerced
     into proxying other ArcGIS Online tenants."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     def test_allows_configured_portal_host(self, plugin):
         plugin._validate_service_url(
-            "https://muniorg.maps.arcgis.com/sharing/rest/content/items/abc"
+            "https://soa-dnr.maps.arcgis.com/sharing/rest/content/items/abc"
         )
 
     def test_allows_services_with_matching_org_id(self, plugin):
         plugin._validate_service_url(
-            "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0"
+            "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0"
         )
 
     def test_allows_numbered_services_shard_with_org_id(self, plugin):
         plugin._validate_service_url(
-            "https://services7.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/X/FeatureServer/0"
+            "https://services7.arcgis.com/7HDiw78fcUiM2BWn/arcgis/rest/services/X/FeatureServer/0"
         )
 
     def test_allows_tiles_host_with_org_id(self, plugin):
         plugin._validate_service_url(
-            "https://tiles.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/X/MapServer"
+            "https://tiles.arcgis.com/7HDiw78fcUiM2BWn/arcgis/rest/services/X/MapServer"
         )
 
-    def test_allows_onprem_muni_org_suffix(self, plugin):
+    def test_allows_onprem_alaska_gov_suffix(self, plugin):
+        # DNR and DGGS publish most Geoportal Feature Services from
+        # on-prem ArcGIS Servers under *.alaska.gov.
         plugin._validate_service_url(
-            "https://gis.muni.org/arcgis/rest/services/X/FeatureServer/0"
+            "https://arcgis.dnr.alaska.gov/arcgis/rest/services/OpenData/"
+            "Infrastructure_RS2477Trails/FeatureServer/0"
         )
+        plugin._validate_service_url(
+            "https://geoportal.dggs.dnr.alaska.gov/arcgis/rest/services/"
+            "X/FeatureServer/0"
+        )
+
+    def test_rejects_lookalike_alaska_gov_host(self, plugin):
+        with pytest.raises(ValueError, match="not on the allowlist"):
+            plugin._validate_service_url(
+                "https://evil-alaska.gov/arcgis/rest/services/X/FeatureServer/0"
+            )
+        with pytest.raises(ValueError, match="not on the allowlist"):
+            plugin._validate_service_url(
+                "https://alaska.gov.evil.com/arcgis/rest/services/X/FeatureServer/0"
+            )
 
     def test_rejects_other_arcgis_online_tenant(self, plugin):
         with pytest.raises(ValueError, match="other ArcGIS Online tenants"):
@@ -2165,7 +2218,7 @@ class TestValidateServiceUrl:
         # Path must START with /<org_id>/ — putting it later doesn't count.
         with pytest.raises(ValueError, match="other ArcGIS Online tenants"):
             plugin._validate_service_url(
-                "https://services.arcgis.com/EVIL/Ce3DhLRthdwbHlfF/FeatureServer/0"
+                "https://services.arcgis.com/EVIL/7HDiw78fcUiM2BWn/FeatureServer/0"
             )
 
     def test_rejects_other_portal_subdomain(self, plugin):
@@ -2180,7 +2233,7 @@ class TestValidateServiceUrl:
 
     def test_rejects_lookalike_arcgis_host(self, plugin):
         with pytest.raises(ValueError, match="not on the allowlist"):
-            plugin._validate_service_url("https://evil-arcgis.com/Ce3DhLRthdwbHlfF/x")
+            plugin._validate_service_url("https://evil-arcgis.com/7HDiw78fcUiM2BWn/x")
 
     def test_rejects_non_http_scheme(self, plugin):
         with pytest.raises(ValueError, match="http or https"):
@@ -2198,43 +2251,43 @@ class TestValidateServiceUrl:
 
 class TestEnsureLayerUrl:
     def test_appends_layer_to_feature_server_root(self):
-        result = AnchorageGISPlugin._ensure_layer_url(
-            "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer"
+        result = AlaskaGeoportalPlugin._ensure_layer_url(
+            "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer"
         )
-        assert result == "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0"
+        assert result == "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0"
 
     def test_preserves_existing_layer_index(self):
-        result = AnchorageGISPlugin._ensure_layer_url(
-            "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/3"
+        result = AlaskaGeoportalPlugin._ensure_layer_url(
+            "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/3"
         )
-        assert result == "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/3"
+        assert result == "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/3"
 
     def test_handles_map_server(self):
-        result = AnchorageGISPlugin._ensure_layer_url(
-            "https://services.arcgis.com/Ce3DhLRthdwbHlfF/MapServer"
+        result = AlaskaGeoportalPlugin._ensure_layer_url(
+            "https://services.arcgis.com/7HDiw78fcUiM2BWn/MapServer"
         )
-        assert result == "https://services.arcgis.com/Ce3DhLRthdwbHlfF/MapServer/0"
+        assert result == "https://services.arcgis.com/7HDiw78fcUiM2BWn/MapServer/0"
 
     def test_strips_trailing_slash(self):
-        result = AnchorageGISPlugin._ensure_layer_url(
-            "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/"
+        result = AlaskaGeoportalPlugin._ensure_layer_url(
+            "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/"
         )
-        assert result == "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0"
+        assert result == "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0"
 
 
 # ── Formatters ─────────────────────────────────────────────────────────
 
 
 class TestFormatters:
-    def test_format_summary(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_format_summary(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         item = {
             "id": "abc123",
             "title": "Flood Map",
             "type": "Web Mapping Application",
-            "snippet": "Shows flood zones in Anchorage",
+            "snippet": "Shows flood zones in Alaska",
             "tags": ["flood", "hazard"],
             "url": "https://example.com/app",
         }
@@ -2243,9 +2296,9 @@ class TestFormatters:
         assert "abc123" in result
         assert "flood" in result
 
-    def test_format_details(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_format_details(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         item = {
             "id": "abc123",
@@ -2270,12 +2323,12 @@ class TestFormatters:
         assert "Spatial Extent" in result
 
     def test_ms_to_date(self):
-        assert AnchorageGISPlugin._ms_to_date(1700000000000) == "2023-11-14"
-        assert AnchorageGISPlugin._ms_to_date(None) == "Unknown"
-        assert AnchorageGISPlugin._ms_to_date("invalid") == "Unknown"
+        assert AlaskaGeoportalPlugin._ms_to_date(1700000000000) == "2023-11-14"
+        assert AlaskaGeoportalPlugin._ms_to_date(None) == "Unknown"
+        assert AlaskaGeoportalPlugin._ms_to_date("invalid") == "Unknown"
 
     def test_format_query_results_polyline_grain_warning(
-        self, anchorage_config
+        self, geoportal_config
     ):
         # Regression: counts on polyline layers (trails, roads,
         # transit) are SEGMENT counts, not unique-named-entity
@@ -2283,8 +2336,8 @@ class TestFormatters:
         # is reported on a polyline layer, so the model frames the
         # answer honestly ("1,123 trail segments", not "1,123
         # trails") and knows how to fetch the unique count.
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         records = [{"OBJECTID": 1, "TRAIL_NAME": "Coastal Trail"}]
         text, _ = plugin._format_query_results(
@@ -2306,14 +2359,14 @@ class TestFormatters:
         assert "TRAIL_NAME" in text
 
     def test_format_query_results_polygon_no_grain_warning(
-        self, anchorage_config
+        self, geoportal_config
     ):
         # Polygons are usually 1:1 with named entities (one park =
         # one polygon, one zone = one polygon — give or take). No
         # warning should fire, otherwise we'd cry wolf on every
         # parks/zoning count.
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         records = [{"OBJECTID": 1, "Name": "Town Square Park"}]
         text, _ = plugin._format_query_results(
@@ -2327,13 +2380,13 @@ class TestFormatters:
         assert "LINE SEGMENTS" not in text
 
     def test_format_query_results_polyline_no_count_no_warning(
-        self, anchorage_config
+        self, geoportal_config
     ):
         # If no total_count is provided (e.g., a list query without
         # the count side-task), don't emit the grain warning either —
         # it only makes sense in the context of a "how many?" answer.
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         records = [{"OBJECTID": 1, "TRAIL_NAME": "Coastal Trail"}]
         text, _ = plugin._format_query_results(
@@ -2345,9 +2398,9 @@ class TestFormatters:
         )
         assert "GRAIN NOTE" not in text
 
-    def test_format_query_results_with_geometry(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_format_query_results_with_geometry(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         records = [
             {
@@ -2369,10 +2422,10 @@ class TestFormatters:
         assert "  __geometry__:" not in text
 
     def test_format_query_results_truncates_large_geometry(
-        self, anchorage_config
+        self, geoportal_config
     ):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
 
         # Build a polygon with enough vertices to exceed GEOMETRY_STR_MAX
         ring = [[-149.9 + i * 0.0001, 61.1 + i * 0.0001] for i in range(500)]
@@ -2389,9 +2442,9 @@ class TestFormatters:
         assert "truncated" in text
         assert "chars total" in text
 
-    def test_single_record_caveat(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_single_record_caveat(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         text, _ = plugin._format_query_results(
             [{"OBJECTID": 1, "X": "y"}],
             limit=10,
@@ -2400,9 +2453,9 @@ class TestFormatters:
         assert "SINGLE-RECORD" in text
         assert "N=1 anecdote" in text
 
-    def test_small_sample_caveat(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_small_sample_caveat(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         text, _ = plugin._format_query_results(
             [{"OBJECTID": i} for i in range(1, 6)],
             limit=10,
@@ -2413,9 +2466,9 @@ class TestFormatters:
         # Don't fire the single-record version
         assert "SINGLE-RECORD" not in text
 
-    def test_no_caveat_at_threshold(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_no_caveat_at_threshold(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         text, _ = plugin._format_query_results(
             [{"OBJECTID": i} for i in range(1, 11)],
             limit=10,
@@ -2424,9 +2477,9 @@ class TestFormatters:
         assert "SINGLE-RECORD" not in text
         assert "SMALL SAMPLE" not in text
 
-    def test_staleness_caveat_fires_on_old_layer(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_staleness_caveat_fires_on_old_layer(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         # 3 years before the test runs (epoch ms)
         from datetime import datetime, timezone, timedelta
         old_dt = datetime.now(timezone.utc) - timedelta(days=3 * 365)
@@ -2440,9 +2493,9 @@ class TestFormatters:
         assert "DATA FRESHNESS" in text
         assert old_dt.strftime("%Y-%m-%d") in text
 
-    def test_staleness_caveat_silent_on_fresh_layer(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_staleness_caveat_silent_on_fresh_layer(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         from datetime import datetime, timezone, timedelta
         fresh_ms = int(
             (datetime.now(timezone.utc) - timedelta(days=30))
@@ -2456,9 +2509,9 @@ class TestFormatters:
         )
         assert "DATA FRESHNESS" not in text
 
-    def test_coverage_caveat_partial(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_coverage_caveat_partial(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         text, _ = plugin._format_query_results(
             [{"OBJECTID": 1}],
             limit=1,
@@ -2468,9 +2521,9 @@ class TestFormatters:
         assert "LIMITED COVERAGE" in text
         assert "~18%" in text
 
-    def test_coverage_caveat_zero_overlap(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_coverage_caveat_zero_overlap(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         text, _ = plugin._format_query_results(
             [{"OBJECTID": 1}],
             limit=1,
@@ -2480,9 +2533,9 @@ class TestFormatters:
         assert "COVERAGE" in text
         assert "does not overlap" in text
 
-    def test_coverage_caveat_silent_at_full(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_coverage_caveat_silent_at_full(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         text, _ = plugin._format_query_results(
             [{"OBJECTID": 1}],
             limit=1,
@@ -2499,13 +2552,13 @@ class TestCompactRecordFormat:
     format costs ~3x the bytes of the data it carries."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     def test_large_result_uses_pipe_table(self, plugin):
-        n = AnchorageGISPlugin.COMPACT_FORMAT_THRESHOLD + 5
+        n = AlaskaGeoportalPlugin.COMPACT_FORMAT_THRESHOLD + 5
         records = [
             {"OBJECTID": i, "NAME": f"Feature {i}"} for i in range(n)
         ]
@@ -2536,7 +2589,7 @@ class TestCompactRecordFormat:
     def test_geometry_records_keep_blocks(self, plugin):
         # Geometry-bearing results stay in block format: a GeoJSON
         # table cell would dominate any row.
-        n = AnchorageGISPlugin.COMPACT_FORMAT_THRESHOLD + 5
+        n = AlaskaGeoportalPlugin.COMPACT_FORMAT_THRESHOLD + 5
         records = [
             {
                 "OBJECTID": i,
@@ -2554,7 +2607,7 @@ class TestCompactRecordFormat:
     def test_compact_applies_dates_and_domains(self, plugin):
         # The compact path must render dates and coded-domain labels
         # the same way the block path does.
-        n = AnchorageGISPlugin.COMPACT_FORMAT_THRESHOLD + 1
+        n = AlaskaGeoportalPlugin.COMPACT_FORMAT_THRESHOLD + 1
         records = [
             {"OBJECTID": i, "EDITED": 1700000000000, "ZONE": "R1A"}
             for i in range(n)
@@ -2576,99 +2629,205 @@ class TestCompactRecordFormat:
     def test_missing_key_renders_empty_cell(self, plugin):
         # Records with heterogeneous keys: the column union is used
         # and absent values render as empty cells, not 'None'.
-        n = AnchorageGISPlugin.COMPACT_FORMAT_THRESHOLD + 1
+        n = AlaskaGeoportalPlugin.COMPACT_FORMAT_THRESHOLD + 1
         records = [{"A": 1} if i % 2 else {"A": 1, "B": 2} for i in range(n)]
         text, _ = plugin._format_query_results(records, limit=50)
         assert "A | B" in text
         assert "None" not in text
 
 
-class TestAnchorageCoveragePct:
+class TestAlaskaCoveragePct:
+    """Statewide coverage check. Alaska is measured as TWO WGS84 boxes
+    because the Aleutians cross the antimeridian; the overlap is summed
+    across both, and extents in Web Mercator or Alaska Albers (the
+    on-prem DNR default) are converted before the comparison."""
+
     def test_wgs84_full_overlap(self):
-        # Bbox exactly the muni — coverage close to 1.0.
+        # Bbox spanning the whole mainland/panhandle box -> ~1.0 (the
+        # Aleutian sliver is ~2% of the total, so allow for it).
+        extent = {
+            "xmin": -180, "ymin": 51,
+            "xmax": -129, "ymax": 72,
+            "spatialReference": {"wkid": 4326},
+        }
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
+        assert pct is not None
+        assert 0.95 <= pct <= 1.0
+
+    def test_wgs84_partial_overlap_single_borough(self):
+        # The old Anchorage-fork bbox is a small slice of the state.
         extent = {
             "xmin": -150.5, "ymin": 60.5,
             "xmax": -148.5, "ymax": 61.6,
             "spatialReference": {"wkid": 4326},
         }
-        pct = AnchorageGISPlugin._anchorage_coverage_pct(extent)
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
         assert pct is not None
-        assert 0.95 <= pct <= 1.05
-
-    def test_wgs84_partial_overlap(self):
-        # Bbox covers only a small slice of downtown Anchorage.
-        extent = {
-            "xmin": -149.95, "ymin": 61.18,
-            "xmax": -149.85, "ymax": 61.22,
-            "spatialReference": {"wkid": 4326},
-        }
-        pct = AnchorageGISPlugin._anchorage_coverage_pct(extent)
-        assert pct is not None
-        assert 0 < pct < 0.05
+        assert 0 < pct < 0.01
 
     def test_wgs84_no_overlap(self):
-        # Florida — far from Anchorage, should be 0.
+        # Florida -- far from Alaska, should be 0.
         extent = {
             "xmin": -82, "ymin": 25, "xmax": -80, "ymax": 27,
             "spatialReference": {"wkid": 4326},
         }
-        pct = AnchorageGISPlugin._anchorage_coverage_pct(extent)
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
         assert pct == 0.0
 
-    def test_web_mercator_handled(self):
-        # Web Mercator bbox roughly over Anchorage downtown.
-        # -149.9, 61.2 in WGS84 ≈ -16685000, 8666000 in Web Mercator.
+    def test_antimeridian_crossing_extent_counts_both_sides(self):
+        # ArcGIS encodes a dateline-crossing WGS84 extent as xmin > xmax.
+        # A layer from the western Aleutians (172E) to the panhandle must
+        # score HIGHER than the same layer clipped at the dateline,
+        # because it also overlaps the 170E-180 sliver.
+        crossing = {
+            "xmin": 172, "ymin": 51.2, "xmax": -129.9, "ymax": 71.5,
+            "spatialReference": {"wkid": 4326},
+        }
+        clipped = {
+            "xmin": -180, "ymin": 51.2, "xmax": -129.9, "ymax": 71.5,
+            "spatialReference": {"wkid": 4326},
+        }
+        pc = AlaskaGeoportalPlugin._alaska_coverage_pct(crossing)
+        pk = AlaskaGeoportalPlugin._alaska_coverage_pct(clipped)
+        assert pc is not None and pk is not None
+        assert pc > pk
+        # ...and the difference is exactly the sliver overlap:
+        # (180-172) x (53-51.2) / total.
+        total = sum(
+            (b[2] - b[0]) * (b[3] - b[1])
+            for b in AlaskaGeoportalPlugin.ALASKA_BBOXES_WGS84
+        )
+        assert abs((pc - pk) - (8 * 1.8) / total) < 1e-9
+
+    def test_aleutian_only_layer_is_small_but_nonzero(self):
+        # A layer entirely west of the dateline (Attu / Shemya).
         extent = {
-            "xmin": -16700000, "ymin": 8650000,
-            "xmax": -16600000, "ymax": 8700000,
+            "xmin": 172.5, "ymin": 52.5, "xmax": 174.5, "ymax": 53.0,
+            "spatialReference": {"wkid": 4326},
+        }
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
+        assert pct is not None
+        assert 0 < pct < 0.01
+
+    def test_web_mercator_handled(self):
+        # Web Mercator bbox roughly over Fairbanks.
+        # -147.72, 64.84 in WGS84 ~ -16444000, 9600000 in Web Mercator.
+        extent = {
+            "xmin": -16500000, "ymin": 9550000,
+            "xmax": -16400000, "ymax": 9650000,
             "spatialReference": {"wkid": 102100},
         }
-        pct = AnchorageGISPlugin._anchorage_coverage_pct(extent)
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
         assert pct is not None
         assert pct > 0
 
-    def test_unhandled_sr_returns_none(self):
-        # Alaska Albers — we don't convert, should bail out.
+    def test_web_mercator_wrapped_past_antimeridian(self):
+        # Some hosted layers carry an x beyond the -180 meridian
+        # (x < -20037508) rather than wrapping; that sliver must still
+        # count against the 170E box instead of being dropped.
+        half = 20037508.34
         extent = {
-            "xmin": 100000, "ymin": 1200000,
-            "xmax": 200000, "ymax": 1300000,
-            "spatialReference": {"wkid": 3338},
+            "xmin": -half - 800000, "ymin": 6800000,
+            "xmax": -half + 200000, "ymax": 7000000,
+            "spatialReference": {"wkid": 3857},
         }
-        pct = AnchorageGISPlugin._anchorage_coverage_pct(extent)
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
+        assert pct is not None
+        assert pct > 0
+
+    def test_alaska_albers_handled(self):
+        # EPSG:3338 is what arcgis.dnr.alaska.gov publishes. This box is
+        # roughly the RS2477 trails extent (verified live): nearly the
+        # whole mainland.
+        extent = {
+            "xmin": -1300000, "ymin": 400000,
+            "xmax": 1500000, "ymax": 2400000,
+            "spatialReference": {"wkid": 102006, "latestWkid": 3338},
+        }
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
+        assert pct is not None
+        assert pct > 0.5
+
+    def test_alaska_albers_inverse_round_trips_known_points(self):
+        # Values from Esri's geometry service (inSR=4326, outSR=3338).
+        cases = [
+            ((219491.8, 1253281.9), (-149.9, 61.2)),      # Anchorage
+            ((297506.8, 1667290.3), (-147.72, 64.84)),    # Fairbanks
+            ((1393914.8, 829306.2), (-131.6, 55.34)),     # Ketchikan
+            ((-102767.6, 2367980.2), (-156.8, 71.29)),    # Utqiagvik
+        ]
+        for (x, y), (lon, lat) in cases:
+            blon, blat = AlaskaGeoportalPlugin._alaska_albers_to_wgs84(x, y)
+            assert abs(blon - lon) < 1e-3 and abs(blat - lat) < 1e-3
+
+    def test_alaska_albers_inverse_keeps_western_aleutians_contiguous(self):
+        # 177.5E projects to x ~ -1.91e6; the inverse must return the
+        # un-normalized -182.5 so a straddling bbox stays one range and
+        # _split_antimeridian can cut it.
+        lon, lat = AlaskaGeoportalPlugin._alaska_albers_to_wgs84(
+            -1911583.4, 626499.9
+        )
+        assert abs(lon - (-182.5)) < 1e-3
+        assert abs(lat - 51.9) < 1e-3
+
+    def test_split_antimeridian(self):
+        f = AlaskaGeoportalPlugin._split_antimeridian
+        assert f(-150, 60, -149, 61) == [(-150, 60, -149, 61)]
+        # xmin > xmax (ArcGIS dateline convention)
+        assert f(172, 51, -129, 72) == [
+            (172, 51, 180.0, 72), (-180.0, 51, -129, 72)
+        ]
+        # un-normalized west of -180
+        assert f(-190, 51, -170, 55) == [
+            (170.0, 51, 180.0, 55), (-180.0, 51, -170, 55)
+        ]
+        # un-normalized east of 180
+        assert f(170, 51, 190, 55) == [
+            (-180.0, 51, -170.0, 55), (170, 51, 180.0, 55)
+        ]
+
+    def test_unhandled_sr_returns_none(self):
+        # UTM zone 6N -- not converted; bail out rather than guess.
+        extent = {
+            "xmin": 300000, "ymin": 6700000,
+            "xmax": 400000, "ymax": 6800000,
+            "spatialReference": {"wkid": 26906},
+        }
+        pct = AlaskaGeoportalPlugin._alaska_coverage_pct(extent)
         assert pct is None
 
     def test_malformed_extent_returns_none(self):
-        assert AnchorageGISPlugin._anchorage_coverage_pct(None) is None
-        assert AnchorageGISPlugin._anchorage_coverage_pct({}) is None
-        assert AnchorageGISPlugin._anchorage_coverage_pct(
+        assert AlaskaGeoportalPlugin._alaska_coverage_pct(None) is None
+        assert AlaskaGeoportalPlugin._alaska_coverage_pct({}) is None
+        assert AlaskaGeoportalPlugin._alaska_coverage_pct(
             {"xmin": "bad"}
         ) is None
 
     def test_degenerate_bbox_returns_none(self):
         # Single-point layer (e.g. one hospital). xmin == xmax,
         # ymin == ymax. The math would say "0% overlap" because the
-        # intersection has zero area — but the point IS inside
-        # Anchorage. Return None so the caveat stays silent rather
+        # intersection has zero area -- but the point IS inside
+        # Alaska. Return None so the caveat stays silent rather
         # than emitting a misleading "does not overlap" message.
         for extent in (
             {  # both dims degenerate
-                "xmin": -149.9, "ymin": 61.2,
-                "xmax": -149.9, "ymax": 61.2,
+                "xmin": -147.7, "ymin": 64.8,
+                "xmax": -147.7, "ymax": 64.8,
                 "spatialReference": {"wkid": 4326},
             },
             {  # zero-width
-                "xmin": -149.9, "ymin": 61.0,
-                "xmax": -149.9, "ymax": 61.3,
+                "xmin": -147.7, "ymin": 64.0,
+                "xmax": -147.7, "ymax": 65.3,
                 "spatialReference": {"wkid": 4326},
             },
             {  # zero-height
-                "xmin": -150.0, "ymin": 61.2,
-                "xmax": -149.0, "ymax": 61.2,
+                "xmin": -150.0, "ymin": 64.8,
+                "xmax": -149.0, "ymax": 64.8,
                 "spatialReference": {"wkid": 4326},
             },
         ):
             assert (
-                AnchorageGISPlugin._anchorage_coverage_pct(extent) is None
+                AlaskaGeoportalPlugin._alaska_coverage_pct(extent) is None
             )
 
 
@@ -2684,7 +2843,7 @@ class TestErrorRewriter:
         # to fix it — including the item_id pre-filled in the example.
         msg = "Cannot perform query. Invalid query parameters."
         details = ["'Invalid field: madeUpField' parameter is invalid"]
-        out = AnchorageGISPlugin._rewrite_arcgis_error(
+        out = AlaskaGeoportalPlugin._rewrite_arcgis_error(
             msg, details, resource_id="abc123",
             has_where=True, has_out_fields=False,
         )
@@ -2702,7 +2861,7 @@ class TestErrorRewriter:
         # it's the most likely cause.
         msg = "Cannot perform query. Invalid query parameters."
         details = ["Unable to perform query. Please check your parameters."]
-        out = AnchorageGISPlugin._rewrite_arcgis_error(
+        out = AlaskaGeoportalPlugin._rewrite_arcgis_error(
             msg, details, resource_id="abc123",
             has_out_fields=True, has_where=False,
         )
@@ -2715,7 +2874,7 @@ class TestErrorRewriter:
         # message — better a verbose error than a misleading one.
         msg = "Some upstream failure"
         details = ["Database connection lost"]
-        out = AnchorageGISPlugin._rewrite_arcgis_error(
+        out = AlaskaGeoportalPlugin._rewrite_arcgis_error(
             msg, details, resource_id="abc123",
         )
         assert "Some upstream failure" in out
@@ -2724,19 +2883,19 @@ class TestErrorRewriter:
     def test_no_data_hint_skips_trivial_where(self):
         # An empty/1=1 WHERE returning 0 records means the layer is
         # empty, not that the query was wrong — no LIKE hint helps.
-        assert AnchorageGISPlugin._no_data_hint("") == ""
-        assert AnchorageGISPlugin._no_data_hint("1=1") == ""
-        assert AnchorageGISPlugin._no_data_hint("  1=1  ") == ""
+        assert AlaskaGeoportalPlugin._no_data_hint("") == ""
+        assert AlaskaGeoportalPlugin._no_data_hint("1=1") == ""
+        assert AlaskaGeoportalPlugin._no_data_hint("  1=1  ") == ""
 
     def test_no_data_hint_emits_for_non_trivial_where(self):
-        out = AnchorageGISPlugin._no_data_hint("Name='Town Square'")
+        out = AlaskaGeoportalPlugin._no_data_hint("Name='Town Square'")
         assert "LIKE" in out
         assert "%" in out
         assert "CASE-SENSITIVE" in out
         assert "1=1" in out  # also tells the model how to confirm
 
     def test_not_queryable_message_names_recovery_path(self):
-        out = AnchorageGISPlugin._not_queryable_message(
+        out = AlaskaGeoportalPlugin._not_queryable_message(
             "abc123", "Web Map"
         )
         assert "abc123" in out
@@ -2754,9 +2913,9 @@ class TestGetDistinctValues:
     constructing a WHERE clause that won't silently return zero rows."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -2941,14 +3100,14 @@ class TestPickNaturalId:
         # Parcel_ID outranks Name when both are present — parcel
         # questions are the canonical "report the ID" use case.
         attrs = {"Name": "Some name", "Parcel_ID": "07502103000"}
-        assert AnchorageGISPlugin._pick_natural_id(attrs) == (
+        assert AlaskaGeoportalPlugin._pick_natural_id(attrs) == (
             "Parcel_ID",
             "07502103000",
         )
 
     def test_falls_back_to_name_when_no_parcel_field(self):
         attrs = {"Name": "Far North Bicentennial Park"}
-        assert AnchorageGISPlugin._pick_natural_id(attrs) == (
+        assert AlaskaGeoportalPlugin._pick_natural_id(attrs) == (
             "Name",
             "Far North Bicentennial Park",
         )
@@ -2956,7 +3115,7 @@ class TestPickNaturalId:
     def test_skips_null_values(self):
         # None / empty-string values should not be picked as the lead.
         attrs = {"Parcel_ID": None, "Parcel_Num": "", "Name": "Lot A"}
-        assert AnchorageGISPlugin._pick_natural_id(attrs) == (
+        assert AlaskaGeoportalPlugin._pick_natural_id(attrs) == (
             "Name",
             "Lot A",
         )
@@ -2965,7 +3124,7 @@ class TestPickNaturalId:
         # OBJECTID/internal-only attrs → no natural ID, lead falls
         # back to OBJECTID in the rendering.
         attrs = {"OBJECTID": 1747, "Shape__Area": 12345}
-        assert AnchorageGISPlugin._pick_natural_id(attrs) is None
+        assert AlaskaGeoportalPlugin._pick_natural_id(attrs) is None
 
     def test_polyline_name_fields_outrank_generic_name(self):
         # When a polyline layer has both a specific name field
@@ -2980,7 +3139,7 @@ class TestPickNaturalId:
             "Route_Name",
         ):
             attrs = {specific: "Coastal Trail", "Name": "Generic"}
-            picked = AnchorageGISPlugin._pick_natural_id(attrs)
+            picked = AlaskaGeoportalPlugin._pick_natural_id(attrs)
             assert picked == (specific, "Coastal Trail"), (
                 f"{specific} should outrank generic Name; got {picked}"
             )
@@ -2995,69 +3154,8 @@ class TestPickNaturalId:
         }
         # Parcel_ID appears earlier in the priority list, so the
         # 8Formatted form wins because Parcel_ID is absent.
-        out = AnchorageGISPlugin._pick_natural_id(attrs)
+        out = AlaskaGeoportalPlugin._pick_natural_id(attrs)
         assert out == ("GIS_ParcelNum8Formatted", "003-184-87")
-
-
-class TestNormalizeParcelVariants:
-    """Pure normaliser for MOA parcel IDs. Generates the four
-    canonical formats (8-digit compact + hyphenated, 11-digit
-    compact + hyphenated) from any common input form."""
-
-    def test_hyphenated_8digit_input(self):
-        # Input "001-213-29" — MOA-canonical short hyphenated form.
-        out = AnchorageGISPlugin._normalize_parcel_variants("001-213-29")
-        assert "00121329" in out
-        assert "001-213-29" in out
-        assert "00121329000" in out
-        assert "001-213-29-000" in out
-
-    def test_compact_8digit_input_pads_with_default_sub(self):
-        # Compact 8-digit input — sub-parcel defaults to "000".
-        out = AnchorageGISPlugin._normalize_parcel_variants("00121329")
-        assert "00121329" in out
-        assert "001-213-29" in out
-        assert "00121329000" in out
-        assert "001-213-29-000" in out
-
-    def test_compact_11digit_input_preserves_sub(self):
-        # Real sub-parcel "001" should round-trip in the variants.
-        out = AnchorageGISPlugin._normalize_parcel_variants("00121329001")
-        assert "00121329001" in out
-        assert "001-213-29-001" in out
-        # Both 8-digit forms should also be present (so model can find
-        # the parent parcel across layers that drop the sub).
-        assert "00121329" in out
-        assert "001-213-29" in out
-
-    def test_input_with_leading_zero_dropped(self):
-        # User typed "1-213-29" — 6 digits, missing leading zeros.
-        # Must still recover the canonical "001-213-29" form.
-        out = AnchorageGISPlugin._normalize_parcel_variants("1-213-29")
-        assert "001-213-29" in out
-        assert "00121329" in out
-
-    def test_input_with_prefix_text(self):
-        # Real-world: "Parcel 003-184-87". Text prefix should not
-        # break extraction.
-        out = AnchorageGISPlugin._normalize_parcel_variants(
-            "Parcel 003-184-87"
-        )
-        assert "00318487" in out
-        assert "003-184-87" in out
-        assert "00318487000" in out
-
-    def test_too_short_returns_empty(self):
-        # < 5 digits is too ambiguous to normalise; refuse rather than
-        # generate misleading variants.
-        assert AnchorageGISPlugin._normalize_parcel_variants("12") == []
-        assert AnchorageGISPlugin._normalize_parcel_variants("") == []
-        assert AnchorageGISPlugin._normalize_parcel_variants(None) == []
-
-    def test_no_digits_returns_empty(self):
-        assert AnchorageGISPlugin._normalize_parcel_variants(
-            "no digits here"
-        ) == []
 
 
 class TestFindFeaturesSpanningClassifications:
@@ -3067,9 +3165,9 @@ class TestFindFeaturesSpanningClassifications:
     polygon layer."""
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -3839,235 +3937,89 @@ class TestFindFeaturesSpanningClassifications:
                 })
 
 
-class TestFindParcel:
-    """Integration of the parcel normaliser with a real WHERE IN
-    lookup. Validates that the variants are sent to the upstream
-    correctly and that the response surfaces the canonical stored
-    form for follow-up queries."""
-
-    @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
-        return p
-
-    @pytest.mark.asyncio
-    async def test_in_clause_carries_all_variants(self, plugin):
-        # Verify the WHERE IN actually contains every generated form,
-        # so a layer storing any of them would match.
-        captured = {}
-
-        async def fake_get(url, params=None):
-            captured.update(params or {})
-            resp = Mock()
-            resp.status_code = 200
-            resp.raise_for_status = Mock()
-            resp.json.return_value = {
-                "features": [
-                    {"attributes": {"Parcel_Num": "00121329000"}}
-                ]
-            }
-            return resp
-
-        with patch.object(
-            plugin, "_resolve_layer_url", new_callable=AsyncMock,
-            return_value="https://example.com/Layer/0",
-        ), patch.object(
-            plugin, "_fetch_layer_meta", new_callable=AsyncMock,
-            return_value={"fields": [{"name": "Parcel_Num"}]},
-        ):
-            plugin.client = Mock()
-            plugin.client.get = fake_get
-
-            await plugin._find_parcel({
-                "item_id": "a" * 32,
-                "parcel_field": "Parcel_Num",
-                "parcel_id": "001-213-29",
-            })
-
-        where = captured["where"]
-        # All four canonical forms must be in the IN clause.
-        assert "'00121329'" in where
-        assert "'001-213-29'" in where
-        assert "'00121329000'" in where
-        assert "'001-213-29-000'" in where
-        assert "Parcel_Num IN" in where
-
-    @pytest.mark.asyncio
-    async def test_match_surfaces_canonical_stored_form(self, plugin):
-        # The layer happens to store 11-digit compact. Response should
-        # tell the model what stored format matched, so follow-up
-        # queries on this layer use the right form verbatim.
-        async def fake_get(url, params=None):
-            resp = Mock()
-            resp.status_code = 200
-            resp.raise_for_status = Mock()
-            resp.json.return_value = {
-                "features": [
-                    {
-                        "attributes": {
-                            "Parcel_Num": "00318487000",
-                            "Source": "P-464",
-                        }
-                    }
-                ]
-            }
-            return resp
-
-        with patch.object(
-            plugin, "_resolve_layer_url", new_callable=AsyncMock,
-            return_value="https://example.com/Layer/0",
-        ), patch.object(
-            plugin, "_fetch_layer_meta", new_callable=AsyncMock,
-            return_value={"fields": [{"name": "Parcel_Num"}]},
-        ):
-            plugin.client = Mock()
-            plugin.client.get = fake_get
-
-            text = await plugin._find_parcel({
-                "item_id": "a" * 32,
-                "parcel_field": "Parcel_Num",
-                "parcel_id": "003-184-87",
-            })
-
-        assert "00318487000" in text
-        assert "Canonical form for this layer" in text
-        assert "P-464" in text  # other fields surfaced too
-
-    @pytest.mark.asyncio
-    async def test_no_match_falls_back_to_like(self, plugin):
-        # First call (IN) returns no features; second call (LIKE)
-        # returns 2 candidates. The response should surface the
-        # candidates so the model has something to act on.
-        call_count = {"n": 0}
-
-        async def fake_get(url, params=None):
-            call_count["n"] += 1
-            resp = Mock()
-            resp.status_code = 200
-            resp.raise_for_status = Mock()
-            if call_count["n"] == 1:
-                # Exact-match IN returns nothing.
-                resp.json.return_value = {"features": []}
-            else:
-                # LIKE fallback finds candidates.
-                resp.json.return_value = {
-                    "features": [
-                        {"attributes": {"Parcel_Num": "00121329111"}},
-                        {"attributes": {"Parcel_Num": "00121329222"}},
-                    ]
-                }
-            return resp
-
-        with patch.object(
-            plugin, "_resolve_layer_url", new_callable=AsyncMock,
-            return_value="https://example.com/Layer/0",
-        ), patch.object(
-            plugin, "_fetch_layer_meta", new_callable=AsyncMock,
-            return_value={"fields": [{"name": "Parcel_Num"}]},
-        ):
-            plugin.client = Mock()
-            plugin.client.get = fake_get
-
-            text = await plugin._find_parcel({
-                "item_id": "a" * 32,
-                "parcel_field": "Parcel_Num",
-                "parcel_id": "001-213-29",
-            })
-
-        assert "no exact match" in text
-        assert "LIKE fallback" in text
-        assert "00121329111" in text
-        assert "00121329222" in text
-
-    @pytest.mark.asyncio
-    async def test_unknown_parcel_field_names_recovery(self, plugin):
-        # Bad field name should give the model a clear path to recover
-        # — same UX pattern as the rest of the plugin's errors.
-        with patch.object(
-            plugin, "_resolve_layer_url", new_callable=AsyncMock,
-            return_value="https://example.com/Layer/0",
-        ), patch.object(
-            plugin, "_fetch_layer_meta", new_callable=AsyncMock,
-            return_value={"fields": [{"name": "Parcel_Num"}]},
-        ):
-            with pytest.raises(ValueError, match="get_layer_schema"):
-                await plugin._find_parcel({
-                    "item_id": "a" * 32,
-                    "parcel_field": "made_up_field",
-                    "parcel_id": "001-213-29",
-                })
-
-
 class TestConfigSchema:
+    GID = "a5055ea72899425c8cc4e01b32658a45"
+    GID2 = "18028130a7a14132bd922bcd830f27c6"
+
+    def _base(self, **over):
+        cfg = {
+            "portal_base_url": "https://soa-dnr.maps.arcgis.com/sharing/rest",
+            "gallery_group_ids": [self.GID],
+            "org_id": "7HDiw78fcUiM2BWn",
+            "city_name": "State of Alaska",
+            "gallery_url": "https://gis.data.alaska.gov/search",
+            "timeout": 30,
+        }
+        cfg.update(over)
+        return cfg
+
     def test_config_schema_valid(self):
-        config = AnchorageGISPluginConfig(
-            portal_base_url="https://muniorg.maps.arcgis.com/sharing/rest",
-            gallery_group_id="c34ed10758ec4f4eb8aa6826ee5be3ff",
-            org_id="Ce3DhLRthdwbHlfF",
-            city_name="Municipality of Anchorage",
-            gallery_url=(
-                "https://muniorg.maps.arcgis.com/apps/instant/filtergallery/"
-                "index.html?appid=4dac7569f1cc4beb9f22ce168c899a30"
-            ),
-            timeout=30,
-        )
-        assert config.city_name == "Municipality of Anchorage"
-        assert config.org_id == "Ce3DhLRthdwbHlfF"
+        config = AlaskaGeoportalPluginConfig(**self._base())
+        assert config.city_name == "State of Alaska"
+        assert config.org_id == "7HDiw78fcUiM2BWn"
         assert config.timeout == 30
+        assert config.gallery_group_ids == [self.GID]
+
+    @pytest.mark.parametrize(
+        "missing",
+        ["portal_base_url", "gallery_group_ids", "org_id", "city_name",
+         "gallery_url"],
+    )
+    def test_config_schema_required_fields(self, missing):
+        cfg = self._base()
+        del cfg[missing]
+        with pytest.raises(ValidationError):
+            AlaskaGeoportalPluginConfig(**cfg)
 
     def test_config_schema_rejects_extra_fields(self):
         with pytest.raises(ValidationError):
-            AnchorageGISPluginConfig(
-                portal_base_url="https://muniorg.maps.arcgis.com/sharing/rest",
-                gallery_group_id="test",
-                org_id="test",
-                city_name="Test",
-                gallery_url="https://example.com/gallery",
-                unknown_field="oops",
-            )
+            AlaskaGeoportalPluginConfig(**self._base(unknown_field="oops"))
+
+    def test_config_schema_rejects_removed_parcel_fields(self):
+        # The MOA-only footprint_for_parcel config keys are gone; a stale
+        # config carrying them must fail loudly, not be silently ignored.
+        for key in ("property_item_id", "buildings_item_id",
+                    "gallery_group_id"):
+            with pytest.raises(ValidationError):
+                AlaskaGeoportalPluginConfig(**self._base(**{key: "x" * 32}))
+
+    def test_config_schema_accepts_multiple_groups_and_dedupes(self):
+        config = AlaskaGeoportalPluginConfig(
+            **self._base(gallery_group_ids=[self.GID, self.GID2, self.GID.upper()])
+        )
+        assert config.gallery_group_ids == [self.GID, self.GID2]
+
+    def test_config_schema_rejects_empty_group_list(self):
+        with pytest.raises(ValidationError):
+            AlaskaGeoportalPluginConfig(**self._base(gallery_group_ids=[]))
+
+    def test_config_schema_rejects_non_hex_group_id(self):
+        # Group ids are interpolated into the portal search query.
+        for bad in ("test", "abcd1234", "g" * 32, "a" * 31):
+            with pytest.raises(ValidationError):
+                AlaskaGeoportalPluginConfig(**self._base(gallery_group_ids=[bad]))
 
     def test_config_schema_strips_trailing_slash(self):
-        config = AnchorageGISPluginConfig(
-            portal_base_url="https://muniorg.maps.arcgis.com/sharing/rest/",
-            gallery_group_id="test",
-            org_id="test",
-            city_name="Test",
-            gallery_url="https://example.com/gallery",
+        config = AlaskaGeoportalPluginConfig(
+            **self._base(
+                portal_base_url="https://soa-dnr.maps.arcgis.com/sharing/rest/"
+            )
         )
         assert config.portal_base_url == (
-            "https://muniorg.maps.arcgis.com/sharing/rest"
+            "https://soa-dnr.maps.arcgis.com/sharing/rest"
         )
 
     def test_config_schema_rejects_invalid_url(self):
         with pytest.raises(ValidationError):
-            AnchorageGISPluginConfig(
-                portal_base_url="not-a-url",
-                gallery_group_id="test",
-                org_id="test",
-                city_name="Test",
-                gallery_url="https://example.com/gallery",
-            )
+            AlaskaGeoportalPluginConfig(**self._base(portal_base_url="not-a-url"))
 
     def test_config_schema_rejects_empty_portal_url(self):
         with pytest.raises(ValidationError):
-            AnchorageGISPluginConfig(
-                portal_base_url="",
-                gallery_group_id="test",
-                org_id="test",
-                city_name="Test",
-                gallery_url="https://example.com/gallery",
-            )
+            AlaskaGeoportalPluginConfig(**self._base(portal_base_url=""))
 
     def test_config_schema_rejects_empty_gallery_url(self):
         with pytest.raises(ValidationError):
-            AnchorageGISPluginConfig(
-                portal_base_url="https://muniorg.maps.arcgis.com/sharing/rest",
-                gallery_group_id="test",
-                org_id="test",
-                city_name="Test",
-                gallery_url="",
-            )
+            AlaskaGeoportalPluginConfig(**self._base(gallery_url=""))
 
 
 # ── Proximity buffer support ───────────────────────────────────────────
@@ -4075,7 +4027,7 @@ class TestConfigSchema:
 
 class TestLinearUnitNormalization:
     def test_aliases_canonicalize(self):
-        f = AnchorageGISPlugin._normalize_linear_unit
+        f = AlaskaGeoportalPlugin._normalize_linear_unit
         assert f("mi") == "miles"
         assert f("Miles") == "miles"
         assert f(" FT ") == "feet"
@@ -4085,12 +4037,12 @@ class TestLinearUnitNormalization:
 
     def test_unknown_unit_rejected(self):
         with pytest.raises(ValueError, match="supported linear unit"):
-            AnchorageGISPlugin._normalize_linear_unit("furlongs")
+            AlaskaGeoportalPlugin._normalize_linear_unit("furlongs")
 
     def test_esri_and_meter_maps_cover_same_keys(self):
-        esri = set(AnchorageGISPlugin._ESRI_LINEAR_UNITS)
-        meters = set(AnchorageGISPlugin._LINEAR_UNIT_TO_METERS)
-        canonical = set(AnchorageGISPlugin._LINEAR_UNIT_ALIASES.values())
+        esri = set(AlaskaGeoportalPlugin._ESRI_LINEAR_UNITS)
+        meters = set(AlaskaGeoportalPlugin._LINEAR_UNIT_TO_METERS)
+        canonical = set(AlaskaGeoportalPlugin._LINEAR_UNIT_ALIASES.values())
         assert esri == meters == canonical
 
 
@@ -4101,7 +4053,7 @@ class TestPointToGeometryDistance:
     }
 
     def test_point_inside_is_zero(self):
-        d = AnchorageGISPlugin._point_to_geometry_distance_m(
+        d = AlaskaGeoportalPlugin._point_to_geometry_distance_m(
             self.SQUARE, (0.5, 0.5)
         )
         assert d == 0.0
@@ -4109,14 +4061,14 @@ class TestPointToGeometryDistance:
     def test_point_just_outside_edge_metric(self):
         # 0.001 deg east of the x=1 edge at ~0.5 deg lat. Ground distance
         # ~= 0.001 * 111195 * cos(0.5 deg) ~= 111.2 m.
-        d = AnchorageGISPlugin._point_to_geometry_distance_m(
+        d = AlaskaGeoportalPlugin._point_to_geometry_distance_m(
             self.SQUARE, (1.001, 0.5)
         )
         assert 110.0 < d < 112.5
 
     def test_nearest_is_corner_for_diagonal_point(self):
         # Point off the (1,1) corner: distance is to the corner, not an edge.
-        d = AnchorageGISPlugin._point_to_geometry_distance_m(
+        d = AlaskaGeoportalPlugin._point_to_geometry_distance_m(
             self.SQUARE, (1.001, 1.001)
         )
         # ~ sqrt(2) * ~111 m at this latitude.
@@ -4125,9 +4077,9 @@ class TestPointToGeometryDistance:
 
 class TestSpatialQueryPolygonBuffer:
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @pytest.mark.asyncio
@@ -4151,7 +4103,7 @@ class TestSpatialQueryPolygonBuffer:
             "get_dataset",
             new_callable=AsyncMock,
             return_value={
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
                 "type": "Feature Service",
             },
         ):
@@ -4190,7 +4142,7 @@ class TestSpatialQueryPolygonBuffer:
             "get_dataset",
             new_callable=AsyncMock,
             return_value={
-                "url": "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                "url": "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
                 "type": "Feature Service",
             },
         ):
@@ -4253,31 +4205,31 @@ class TestFilterPolygonUnion:
     ]
 
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     def test_overlapping_rings_union_without_parity_hole(self):
-        out = AnchorageGISPlugin._union_esri_rings(
+        out = AlaskaGeoportalPlugin._union_esri_rings(
             [self.SQ_A, self.SQ_B]
         )
         assert out is not None
         assert len(out) == 1
         # 4 + 4 - 1 overlap. Even-odd over the concatenated rings
         # would read 6 (the overlap flips into a hole).
-        area = abs(AnchorageGISPlugin._ring_area(out[0]))
+        area = abs(AlaskaGeoportalPlugin._ring_area(out[0]))
         assert area == pytest.approx(7.0, rel=1e-6)
         # Output keeps Esri orientation: clockwise exterior.
-        assert AnchorageGISPlugin._ring_area(out[0]) < 0
+        assert AlaskaGeoportalPlugin._ring_area(out[0]) < 0
 
     def test_adjacent_rings_dissolve(self):
-        out = AnchorageGISPlugin._union_esri_rings(
+        out = AlaskaGeoportalPlugin._union_esri_rings(
             [self.SQ_A, self.SQ_ADJ]
         )
         assert out is not None
         assert len(out) == 1
-        area = abs(AnchorageGISPlugin._ring_area(out[0]))
+        area = abs(AlaskaGeoportalPlugin._ring_area(out[0]))
         assert area == pytest.approx(8.0, rel=1e-6)
 
     def test_disjoint_rings_survive(self):
@@ -4285,24 +4237,24 @@ class TestFilterPolygonUnion:
             [10.0, 10.0], [10.0, 11.0], [11.0, 11.0],
             [11.0, 10.0], [10.0, 10.0],
         ]
-        out = AnchorageGISPlugin._union_esri_rings([self.SQ_A, far])
+        out = AlaskaGeoportalPlugin._union_esri_rings([self.SQ_A, far])
         assert out is not None
         assert len(out) == 2
         total = sum(
-            abs(AnchorageGISPlugin._ring_area(r)) for r in out
+            abs(AlaskaGeoportalPlugin._ring_area(r)) for r in out
         )
         assert total == pytest.approx(5.0, rel=1e-6)
 
     def test_degenerate_input_returns_none(self):
-        assert AnchorageGISPlugin._union_esri_rings([]) is None
-        assert AnchorageGISPlugin._union_esri_rings(
+        assert AlaskaGeoportalPlugin._union_esri_rings([]) is None
+        assert AlaskaGeoportalPlugin._union_esri_rings(
             [[[0.0, 0.0], [1.0, 1.0]]]
         ) is None
 
     # ── _fetch_filter_polygon end-to-end over a mocked client ────────
 
     LAYER_URL = (
-        "https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0"
+        "https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0"
     )
 
     def _wire(self, plugin, count, pages):
@@ -4348,7 +4300,7 @@ class TestFilterPolygonUnion:
         ):
             out = await plugin._fetch_filter_polygon("c" * 32, "1=1")
         assert len(out["rings"]) == 1
-        area = abs(AnchorageGISPlugin._ring_area(out["rings"][0]))
+        area = abs(AlaskaGeoportalPlugin._ring_area(out["rings"][0]))
         assert area == pytest.approx(7.0, rel=1e-6)
 
     @pytest.mark.asyncio
@@ -4412,9 +4364,9 @@ class TestFilterPolygonUnion:
 
 class TestAggregateByPolygonBuffer:
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     # Single council: Midtown covering [0,0]-[2,2] near the equator so the
@@ -4446,7 +4398,7 @@ class TestAggregateByPolygonBuffer:
             ),
             patch.object(
                 plugin, "_resolve_layer_url", new_callable=AsyncMock,
-                return_value="https://services.arcgis.com/Ce3DhLRthdwbHlfF/FeatureServer/0",
+                return_value="https://services.arcgis.com/7HDiw78fcUiM2BWn/FeatureServer/0",
             ),
             patch.object(
                 plugin, "_fetch_layer_meta", new_callable=AsyncMock,
@@ -4506,9 +4458,9 @@ class TestAggregateByPolygonBuffer:
 
 
 class TestBufferToolSchemas:
-    def test_spatial_query_polygon_exposes_distance_units(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_spatial_query_polygon_exposes_distance_units(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tool = next(
             t for t in plugin.get_tools() if t.name == "spatial_query_polygon"
         )
@@ -4517,9 +4469,9 @@ class TestBufferToolSchemas:
         assert "units" in props
         assert "miles" in props["units"]["enum"]
 
-    def test_aggregate_exposes_buffer_params(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_aggregate_exposes_buffer_params(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tool = next(
             t for t in plugin.get_tools() if t.name == "aggregate_by_polygon"
         )
@@ -4528,9 +4480,9 @@ class TestBufferToolSchemas:
         assert "buffer_units" in props
         assert "miles" in props["buffer_units"]["enum"]
 
-    def test_coverage_tool_schema(self, anchorage_config):
-        plugin = AnchorageGISPlugin(anchorage_config)
-        plugin.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def test_coverage_tool_schema(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         tool = next(
             t for t in plugin.get_tools() if t.name == "coverage_by_polygon"
         )
@@ -4572,9 +4524,9 @@ def _cov_resp(cov_sum):
 
 class TestCoverageByPolygon:
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         return p
 
     @staticmethod
@@ -4782,21 +4734,21 @@ def _json_resp(payload, status=200):
 
 class TestArcgisRetry:
     @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+    def plugin(self, geoportal_config):
+        p = AlaskaGeoportalPlugin(geoportal_config)
+        p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
         p.ARCGIS_RETRY_BACKOFF_S = 0  # no real sleeping in tests
         return p
 
     def test_error_text_never_empty(self):
-        f = AnchorageGISPlugin._arcgis_error_text
+        f = AlaskaGeoportalPlugin._arcgis_error_text
         assert f({"code": 500, "message": ""}).strip()  # non-empty
         assert f({}).strip()
         full = f({"code": 400, "message": "boom", "details": ["bad field"]})
         assert "code 400" in full and "boom" in full and "bad field" in full
 
     def test_transient_classification(self):
-        t = AnchorageGISPlugin._is_transient_arcgis_error
+        t = AlaskaGeoportalPlugin._is_transient_arcgis_error
         assert t({"code": 500, "message": ""}) is True
         assert t({"code": 503, "message": "busy"}) is True
         assert t({"message": ""}) is True            # empty msg
@@ -4861,373 +4813,3 @@ class TestArcgisRetry:
         )
         assert out == {"ok": True}
         assert plugin.client.post.await_count == 2
-
-
-# ── footprint_for_parcel ───────────────────────────────────────────────
-
-
-def _fp_parcel_attrs(**overrides):
-    """Baseline parcel attributes for footprint_for_parcel tests.
-
-    Geometry defaults to a 20x20m square (400 m2 = ~4,306 sqft), so
-    Lot_Size=4306 keeps the mapped-vs-assessor cross-check quiet.
-    """
-    attrs = {
-        "Parcel_ID": "00326477000",
-        "GIS_ParcelNum11": "00326477000",
-        "Parcel_Address": "1820 PARKSIDE DR",
-        "Property_Type": "Residential",
-        "Land_Use": "Residential 1 Family",
-        "Total_Living_Units": 1,
-        "Lot_Size": 4306,
-        "Zoning_District": "R2D",
-        "Grid_Map": "SW1433",
-        "Condo_Unit_Number": None,
-        "Parcel_ID_URL": "https://property.muni.org/x?pin=00326477000",
-    }
-    attrs.update(overrides)
-    return attrs
-
-
-_FP_SQUARE_RINGS = [[[0, 0], [0, 20], [20, 20], [20, 0], [0, 0]]]
-
-
-def _fp_building(coords):
-    return {
-        "geometry": {"type": "Polygon", "coordinates": coords},
-        "properties": {"OBJECTID": 1, "Category": "General"},
-    }
-
-
-async def _fp_run(
-    plugin, parcel_features, bldg_features, parcel_id="00326477000"
-):
-    """Run _footprint_for_parcel with the upstream calls mocked out."""
-    with patch.object(
-        plugin,
-        "_resolve_layer_url",
-        new_callable=AsyncMock,
-        return_value="https://services2.arcgis.com/x/FeatureServer/0",
-    ), patch.object(
-        plugin,
-        "_request_json_with_retry",
-        new_callable=AsyncMock,
-        return_value={"features": parcel_features},
-    ), patch.object(
-        plugin,
-        "_paged_geojson_fetch",
-        new_callable=AsyncMock,
-        return_value=bldg_features,
-    ):
-        # Prose only: these tests assert on the rendering. The
-        # structured half is covered in test_structured_output.py.
-        text, _ = await plugin._footprint_for_parcel(
-            {"parcel_id": parcel_id}
-        )
-        return text
-
-
-class TestFootprintForParcel:
-    @pytest.fixture
-    def plugin(self, anchorage_config):
-        p = AnchorageGISPlugin(anchorage_config)
-        p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
-        p.client = AsyncMock()
-        return p
-
-    # -- ambiguous match: candidates must be in the STRUCTURED half --
-
-    @pytest.mark.asyncio
-    async def test_ambiguous_match_lists_candidates_structured(
-        self, plugin
-    ):
-        two = [
-            {"attributes": _fp_parcel_attrs(
-                Parcel_ID="00908111000",
-                Parcel_Address="3600 DENALI ST",
-            )},
-            {"attributes": _fp_parcel_attrs(
-                Parcel_ID="00908111001",
-                Parcel_Address="3600 DENALI ST",
-                Condo_Unit_Number="1",
-            )},
-        ]
-        with patch.object(
-            plugin,
-            "_resolve_layer_url",
-            new_callable=AsyncMock,
-            return_value="https://services2.arcgis.com/x/FeatureServer/0",
-        ), patch.object(
-            plugin,
-            "_request_json_with_retry",
-            new_callable=AsyncMock,
-            return_value={"features": two},
-        ):
-            text, structured = await plugin._footprint_for_parcel(
-                {"parcel_id": "009-081-11"}
-            )
-        assert structured["result"] is None
-        caveat = structured["caveats"][0]
-        assert caveat["code"] == "parcel_ambiguous"
-        # Structured-output clients render only structuredContent, so
-        # the candidate Parcel_IDs must live there, not just in the
-        # markdown half.
-        ids = [c["parcel_id"] for c in caveat["candidates"]]
-        assert ids == ["00908111000", "00908111001"]
-        assert "00908111000" in caveat["message"]
-        assert "00908111000" in text
-
-    # -- zoning normalization / cap table --
-
-    def test_normalize_bowl_district(self):
-        assert AnchorageGISPlugin._normalize_zoning_district("R2D") == (
-            "R2D",
-            "bowl",
-        )
-
-    def test_normalize_strips_sl_suffix(self):
-        assert AnchorageGISPlugin._normalize_zoning_district("R6SL") == (
-            "R6",
-            "bowl",
-        )
-
-    def test_normalize_ce_prefix_with_hyphen_and_space(self):
-        assert AnchorageGISPlugin._normalize_zoning_district("CE-R1A") == (
-            "R1A",
-            "chugiak-eagle river",
-        )
-        assert AnchorageGISPlugin._normalize_zoning_district("CE RO") == (
-            "RO",
-            "chugiak-eagle river",
-        )
-
-    def test_normalize_girdwood_prefix(self):
-        assert AnchorageGISPlugin._normalize_zoning_district("GR1") == (
-            "R1",
-            "girdwood",
-        )
-
-    def test_normalize_r10_not_mangled_to_r1(self):
-        assert AnchorageGISPlugin._normalize_zoning_district("R10SL") == (
-            "R10",
-            "bowl",
-        )
-
-    def test_cap_table_spot_values(self):
-        caps = AnchorageGISPlugin.LOT_COVERAGE_CAPS
-        assert caps["R2D"] == 0.40
-        assert caps["R3A"] == 0.50
-        assert caps["R3"] == 0.60
-        assert caps["R8"] == 0.05
-        assert "R4A" not in caps
-        assert "R4A" in AnchorageGISPlugin.LOT_COVERAGE_UNRESTRICTED
-
-    # -- clip math (pure geometry, no mocks) --
-
-    def test_clip_building_half_inside(self):
-        parcel = AnchorageGISPlugin._esri_rings_to_clipper_paths(
-            _FP_SQUARE_RINGS
-        )
-        bldg = AnchorageGISPlugin._geojson_to_clipper_paths(
-            {
-                "type": "Polygon",
-                "coordinates": [
-                    [[-5, 0], [5, 0], [5, 10], [-5, 10], [-5, 0]]
-                ],
-            }
-        )
-        area = AnchorageGISPlugin._clip_intersection_area_m2(bldg, parcel)
-        assert area == pytest.approx(50.0, rel=1e-6)
-
-    def test_clip_building_with_hole(self):
-        parcel = AnchorageGISPlugin._esri_rings_to_clipper_paths(
-            _FP_SQUARE_RINGS
-        )
-        bldg = AnchorageGISPlugin._geojson_to_clipper_paths(
-            {
-                "type": "Polygon",
-                "coordinates": [
-                    [[2, 2], [12, 2], [12, 12], [2, 12], [2, 2]],
-                    [[5, 5], [7, 5], [7, 7], [5, 7], [5, 5]],
-                ],
-            }
-        )
-        area = AnchorageGISPlugin._clip_intersection_area_m2(bldg, parcel)
-        assert area == pytest.approx(96.0, rel=1e-6)
-
-    def test_clip_overlapping_buildings_not_double_counted(self):
-        parcel = AnchorageGISPlugin._esri_rings_to_clipper_paths(
-            _FP_SQUARE_RINGS
-        )
-        square = {
-            "type": "Polygon",
-            "coordinates": [[[2, 2], [12, 2], [12, 12], [2, 12], [2, 2]]],
-        }
-        paths = AnchorageGISPlugin._geojson_to_clipper_paths(
-            square
-        ) + AnchorageGISPlugin._geojson_to_clipper_paths(square)
-        area = AnchorageGISPlugin._clip_intersection_area_m2(paths, parcel)
-        assert area == pytest.approx(100.0, rel=1e-6)
-
-    def test_clip_building_outside_parcel_is_zero(self):
-        parcel = AnchorageGISPlugin._esri_rings_to_clipper_paths(
-            _FP_SQUARE_RINGS
-        )
-        bldg = AnchorageGISPlugin._geojson_to_clipper_paths(
-            {
-                "type": "Polygon",
-                "coordinates": [
-                    [[30, 30], [40, 30], [40, 40], [30, 40], [30, 30]]
-                ],
-            }
-        )
-        assert (
-            AnchorageGISPlugin._clip_intersection_area_m2(bldg, parcel)
-            == 0.0
-        )
-
-    # -- full flow (mocked upstream) --
-
-    @pytest.mark.asyncio
-    async def test_happy_path_numbers(self, plugin):
-        # 10x10m building fully inside the 20x20m lot: 100 m2 =
-        # 1,076.39 sqft on a 4,306 sqft lot -> 25.0% coverage, R2D cap
-        # 40% -> max 1,722 sqft, headroom ~646 sqft; note 3 applies.
-        text = await _fp_run(
-            plugin,
-            [
-                {
-                    "attributes": _fp_parcel_attrs(),
-                    "geometry": {"rings": _FP_SQUARE_RINGS},
-                }
-            ],
-            [
-                _fp_building(
-                    [[[5, 5], [15, 5], [15, 15], [5, 15], [5, 5]]]
-                )
-            ],
-        )
-        assert '"existing_footprint_sqft": 1076' in text
-        assert '"coverage_pct": 0.25' in text
-        assert '"district_max_coverage": 0.4' in text
-        assert '"max_footprint_sqft": 1722' in text
-        assert '"adu_footprint_headroom_sqft": 646' in text
-        assert '"building_count": 1' in text
-        # note 3: 50% of 4,306 = 2,153 - 1,076 = 1,077
-        assert '"headroom_if_note3_50pct": 1077' in text
-        assert "Shape__Area" in text  # caveat present
-
-    @pytest.mark.asyncio
-    async def test_shared_building_clipped_to_lot(self, plugin):
-        # Attached-housing shape: the building polygon extends far
-        # beyond the lot; only the on-lot part (10x20=200 m2) counts.
-        text = await _fp_run(
-            plugin,
-            [
-                {
-                    "attributes": _fp_parcel_attrs(),
-                    "geometry": {"rings": _FP_SQUARE_RINGS},
-                }
-            ],
-            [
-                _fp_building(
-                    [[[10, -50], [80, -50], [80, 70], [10, 70], [10, -50]]]
-                )
-            ],
-        )
-        # 200 m2 = 2,152.78 sqft, NOT the whole 8,400 m2 building.
-        assert '"existing_footprint_sqft": 2153' in text
-        assert '"coverage_pct": 0.5' in text
-
-    @pytest.mark.asyncio
-    async def test_not_found(self, plugin):
-        text = await _fp_run(plugin, [], [], parcel_id="999-999-99")
-        assert "no parcel found" in text
-        assert "find_parcel" in text
-
-    @pytest.mark.asyncio
-    async def test_multiple_distinct_parcels_listed_not_computed(
-        self, plugin
-    ):
-        feats = [
-            {
-                "attributes": _fp_parcel_attrs(
-                    Parcel_ID=f"0032647700{i}", Condo_Unit_Number=str(i)
-                ),
-                "geometry": {"rings": _FP_SQUARE_RINGS},
-            }
-            for i in (1, 2)
-        ]
-        text = await _fp_run(plugin, feats, [])
-        assert "matched 2 parcel records" in text
-        assert "coverage_pct" not in text
-
-    @pytest.mark.asyncio
-    async def test_no_lot_size_clean_response(self, plugin):
-        feats = [
-            {
-                "attributes": _fp_parcel_attrs(
-                    Lot_Size=0, Condo_Unit_Number="4B"
-                ),
-                "geometry": {"rings": _FP_SQUARE_RINGS},
-            }
-        ]
-        text = await _fp_run(plugin, feats, [])
-        assert "no independent lot" in text
-        assert "coverage_pct" not in text
-
-    @pytest.mark.asyncio
-    async def test_ce_district_cap_not_assumed(self, plugin):
-        feats = [
-            {
-                "attributes": _fp_parcel_attrs(Zoning_District="CER2M"),
-                "geometry": {"rings": _FP_SQUARE_RINGS},
-            }
-        ]
-        text = await _fp_run(
-            plugin,
-            feats,
-            [_fp_building([[[5, 5], [15, 5], [15, 15], [5, 15], [5, 5]]])],
-        )
-        assert '"district_max_coverage": null' in text
-        assert "21.10" in text
-        assert '"coverage_pct": 0.25' in text  # coverage still computed
-
-    @pytest.mark.asyncio
-    async def test_r4a_unrestricted_skips_headroom(self, plugin):
-        feats = [
-            {
-                "attributes": _fp_parcel_attrs(Zoning_District="R4A"),
-                "geometry": {"rings": _FP_SQUARE_RINGS},
-            }
-        ]
-        text = await _fp_run(
-            plugin,
-            feats,
-            [_fp_building([[[5, 5], [15, 5], [15, 15], [5, 15], [5, 5]]])],
-        )
-        assert '"district_max_coverage": null' in text
-        assert '"adu_footprint_headroom_sqft": null' in text
-        assert "unrestricted" in text
-
-    @pytest.mark.asyncio
-    async def test_missing_parcel_id_errors(self, plugin):
-        result = await plugin.execute_tool("footprint_for_parcel", {})
-        assert result.success is False
-        assert "parcel_id is required" in result.error_message
-
-    @pytest.mark.asyncio
-    async def test_lot_size_geometry_mismatch_caveat(self, plugin):
-        feats = [
-            {
-                # 20x20m = ~4,306 sqft mapped, assessor says 10,000.
-                "attributes": _fp_parcel_attrs(Lot_Size=10000),
-                "geometry": {"rings": _FP_SQUARE_RINGS},
-            }
-        ]
-        text = await _fp_run(
-            plugin,
-            feats,
-            [_fp_building([[[5, 5], [15, 5], [15, 15], [5, 15], [5, 5]]])],
-        )
-        assert ">15% apart" in text

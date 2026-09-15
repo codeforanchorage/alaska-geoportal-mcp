@@ -18,26 +18,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from jsonschema import Draft202012Validator
 
-from plugins.anchorage_gis.config_schema import AnchorageGISPluginConfig
-from plugins.anchorage_gis.plugin import AnchorageGISPlugin
+from plugins.alaska_geoportal.config_schema import AlaskaGeoportalPluginConfig
+from plugins.alaska_geoportal.plugin import AlaskaGeoportalPlugin
 
 
 @pytest.fixture
-def anchorage_config():
+def geoportal_config():
     return {
         "portal_base_url": "https://example.maps.arcgis.com/sharing/rest",
-        "gallery_group_id": "abc123",
+        "gallery_group_ids": ["a5055ea72899425c8cc4e01b32658a45"],
         "org_id": "org123",
-        "city_name": "Municipality of Anchorage",
+        "city_name": "State of Alaska",
         "gallery_url": "https://example.com/gallery",
         "timeout": 30,
     }
 
 
 @pytest.fixture
-def plugin(anchorage_config):
-    p = AnchorageGISPlugin(anchorage_config)
-    p.plugin_config = AnchorageGISPluginConfig(**anchorage_config)
+def plugin(geoportal_config):
+    p = AlaskaGeoportalPlugin(geoportal_config)
+    p.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
     return p
 
 
@@ -56,14 +56,14 @@ def _validate(schema, instance):
 class TestSchemasAreWellFormed:
     def test_declared_schemas_are_valid_json_schema(self):
         """A malformed schema would make every client reject the tool."""
-        for schema in AnchorageGISPlugin.TOOL_OUTPUT_SCHEMAS.values():
+        for schema in AlaskaGeoportalPlugin.TOOL_OUTPUT_SCHEMAS.values():
             Draft202012Validator.check_schema(schema)
 
     def test_schemas_are_self_contained(self):
         """No $ref, so no client has to resolve references."""
         import json
 
-        for name, schema in AnchorageGISPlugin.TOOL_OUTPUT_SCHEMAS.items():
+        for name, schema in AlaskaGeoportalPlugin.TOOL_OUTPUT_SCHEMAS.items():
             assert "$ref" not in json.dumps(schema), name
 
     def test_only_schema_declaring_tools_are_listed(self, plugin):
@@ -72,7 +72,7 @@ class TestSchemasAreWellFormed:
         Guards the pairing: adding a name to TOOL_OUTPUT_SCHEMAS without
         also returning structured_content silently breaks conformance.
         """
-        declared = set(AnchorageGISPlugin.TOOL_OUTPUT_SCHEMAS)
+        declared = set(AlaskaGeoportalPlugin.TOOL_OUTPUT_SCHEMAS)
         assert declared == {
             "aggregate_by_polygon",
             "coverage_by_polygon",
@@ -82,7 +82,6 @@ class TestSchemasAreWellFormed:
             "filter_by_polygon",
             "get_distinct_values",
             "find_features_spanning_classifications",
-            "footprint_for_parcel",
         }
 
         tools = {t.name: t for t in plugin.get_tools()}
@@ -98,13 +97,13 @@ class TestSchemasAreWellFormed:
         A maximum here would make the server violate its own schema on
         dense lots -- exactly the case the tool warns about.
         """
-        rows = AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA["properties"]["rows"]
+        rows = AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA["properties"]["rows"]
         pct = rows["items"]["properties"]["coverage_pct"]
         assert "maximum" not in pct and "exclusiveMaximum" not in pct
 
     def test_group_admits_non_string_values(self):
         """`group` is a raw field value, not necessarily a string."""
-        rows = AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA["properties"]["rows"]
+        rows = AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA["properties"]["rows"]
         allowed = set(rows["items"]["properties"]["group"]["type"])
         assert {"string", "number", "boolean", "null"} <= allowed
 
@@ -164,7 +163,7 @@ class TestAggregateStructuredOutput:
         with p1, p2, p3, p4:
             text, structured = await plugin._aggregate_by_polygon(_agg_args())
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert structured["summary"]["source_features"] == 2
         assert structured["rows"][0]["group"] == "North"
         assert structured["rows"][0]["count"] == 2
@@ -180,7 +179,7 @@ class TestAggregateStructuredOutput:
         with p1, p2, p3, p4:
             _, structured = await plugin._aggregate_by_polygon(_agg_args())
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert structured["rows"] == []
         assert structured["summary"]["buckets"] == 0
         assert structured["summary"]["unmatched"] == 1
@@ -197,7 +196,7 @@ class TestAggregateStructuredOutput:
                 _agg_args(sum_fields=[])
             )
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert structured["rows"][0]["sums"] == {}
 
     @pytest.mark.asyncio
@@ -209,7 +208,7 @@ class TestAggregateStructuredOutput:
                 _agg_args(count=False)
             )
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert "count" not in structured["rows"][0]
         assert "small_sample" not in structured["rows"][0]
 
@@ -221,7 +220,7 @@ class TestAggregateStructuredOutput:
         with p1, p2, p3, p4:
             _, structured = await plugin._aggregate_by_polygon(_agg_args())
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert structured["rows"][0]["group"] == 2020
 
     @pytest.mark.asyncio
@@ -231,7 +230,7 @@ class TestAggregateStructuredOutput:
         with p1, p2, p3, p4:
             text, structured = await plugin._aggregate_by_polygon(_agg_args())
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert structured["rows"][0]["small_sample"] is True
         codes = {c["code"] for c in structured["caveats"]}
         assert "small_sample_buckets" in codes
@@ -246,7 +245,7 @@ class TestAggregateStructuredOutput:
         with p1, p2, p3, p4:
             _, structured = await plugin._aggregate_by_polygon(_agg_args())
 
-        _validate(AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA, structured)
         assert structured["query"]["buffer"] is None
 
 
@@ -266,7 +265,7 @@ class TestStructuredContentReachesTheWire:
         assert result.success
         assert result.structured_content is not None
         _validate(
-            AnchorageGISPlugin.AGGREGATE_OUTPUT_SCHEMA,
+            AlaskaGeoportalPlugin.AGGREGATE_OUTPUT_SCHEMA,
             result.structured_content,
         )
 
@@ -345,7 +344,7 @@ class TestCoverageStructuredOutput:
         with p1, p2, p3, p4:
             text, structured = await plugin._coverage_by_polygon(_cov_args())
 
-        _validate(AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
         assert structured["summary"]["targets_measured"] == 1
         row = structured["rows"][0]
         assert row["id"] == "P1"
@@ -364,7 +363,7 @@ class TestCoverageStructuredOutput:
         with p1, p2, p3, p4:
             _, structured = await plugin._coverage_by_polygon(_cov_args())
 
-        _validate(AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
         assert structured["rows"][0]["coverage_pct"] > 100.0
 
     @pytest.mark.asyncio
@@ -374,7 +373,7 @@ class TestCoverageStructuredOutput:
         with p1, p2, p3, p4:
             _, structured = await plugin._coverage_by_polygon(_cov_args())
 
-        _validate(AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
         assert structured["summary"]["zero_coverage"] == 1
         assert structured["rows"][0]["coverage_pct"] == 0.0
         codes = {c["code"] for c in structured["caveats"]}
@@ -390,7 +389,7 @@ class TestCoverageStructuredOutput:
                 _cov_args(max_coverage_pct=40)
             )
 
-        _validate(AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
         # 90% coverage is outside "coverage < 40%"
         assert structured["summary"]["in_band"] == 0
         assert structured["summary"]["out_of_band"] == 1
@@ -410,7 +409,7 @@ class TestCoverageStructuredOutput:
         with p1, p2, p3, p4:
             _, structured = await plugin._coverage_by_polygon(_cov_args())
 
-        _validate(AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
         assert structured["summary"]["skipped"] == 1
         assert structured["summary"]["targets_measured"] == 1
         codes = {c["code"] for c in structured["caveats"]}
@@ -420,7 +419,7 @@ class TestCoverageStructuredOutput:
     async def test_rows_are_not_truncated_to_the_table_limit(self, plugin):
         """structuredContent carries every in-band target, not just the
         COVERAGE_TABLE_ROWS the markdown renders."""
-        n = AnchorageGISPlugin.COVERAGE_TABLE_ROWS + 15
+        n = AlaskaGeoportalPlugin.COVERAGE_TABLE_ROWS + 15
         targets = [
             _poly(0, 0, 10, 10, Parcel_ID=f"P{i}", Shape__Area=100.0)
             for i in range(n)
@@ -429,13 +428,13 @@ class TestCoverageStructuredOutput:
         with p1, p2, p3, p4:
             text, structured = await plugin._coverage_by_polygon(_cov_args())
 
-        _validate(AnchorageGISPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.COVERAGE_OUTPUT_SCHEMA, structured)
         assert len(structured["rows"]) == n
 
         # The rendering is still capped, so the two intentionally differ.
         # Count data rows only -- the header is also "| Parcel_ID | ...".
         rendered = len(re.findall(r"^\| P\d+ \|", text, re.MULTILINE))
-        assert rendered == AnchorageGISPlugin.COVERAGE_TABLE_ROWS
+        assert rendered == AlaskaGeoportalPlugin.COVERAGE_TABLE_ROWS
         assert len(structured["rows"]) > rendered
 
     @pytest.mark.asyncio
@@ -453,7 +452,7 @@ class TestCoverageStructuredOutput:
 # ── the record-listing family (shared _format_query_results) ──────────
 
 
-QR_SCHEMA = AnchorageGISPlugin.QUERY_RESULT_OUTPUT_SCHEMA
+QR_SCHEMA = AlaskaGeoportalPlugin.QUERY_RESULT_OUTPUT_SCHEMA
 
 
 class TestQueryResultStructuredOutput:
@@ -584,7 +583,7 @@ class TestDistinctValuesStructuredOutput:
             text, structured = await plugin._get_distinct_values(
                 {"item_id": "a" * 32, "field": "Zone"}
             )
-        _validate(AnchorageGISPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
         # de-duplicated, order preserved, raw values
         assert structured["values"] == ["R1", "R2", "R3"]
         assert structured["summary"]["returned"] == 3
@@ -597,7 +596,7 @@ class TestDistinctValuesStructuredOutput:
             _, structured = await plugin._get_distinct_values(
                 {"item_id": "a" * 32, "field": "Zone"}
             )
-        _validate(AnchorageGISPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
         assert structured["values"] == []
 
     @pytest.mark.asyncio
@@ -608,7 +607,7 @@ class TestDistinctValuesStructuredOutput:
             _, structured = await plugin._get_distinct_values(
                 {"item_id": "a" * 32, "field": "Zone"}
             )
-        _validate(AnchorageGISPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
         assert structured["values"] == [1, 2, 3]
 
     @pytest.mark.asyncio
@@ -618,107 +617,17 @@ class TestDistinctValuesStructuredOutput:
             _, structured = await plugin._get_distinct_values(
                 {"item_id": "a" * 32, "field": "Zone", "limit": 5}
             )
-        _validate(AnchorageGISPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
+        _validate(AlaskaGeoportalPlugin.DISTINCT_VALUES_OUTPUT_SCHEMA, structured)
         assert structured["summary"]["truncated"] is True
         assert "values_cap_reached" in {
             c["code"] for c in structured["caveats"]
         }
 
 
-# ── footprint_for_parcel ──────────────────────────────────────────────
-
-
-FP_SCHEMA = AnchorageGISPlugin.FOOTPRINT_OUTPUT_SCHEMA
-
-_FP_ATTRS = {
-    "Parcel_ID": "00326477000",
-    "Parcel_Address": "123 MAIN ST",
-    "Zoning_District": "R-1",
-    "Land_Use": "Single Family",
-    "Total_Living_Units": 1,
-    "Lot_Size": 8000.0,
-    "Condo_Unit_Number": None,
-    "Parcel_ID_URL": "https://property.muni.org/x",
-}
-
-
-async def _fp_run(plugin, parcel_features, bldg_features):
-    with patch.object(
-        plugin, "_resolve_layer_url", AsyncMock(return_value="http://x/0")
-    ), patch.object(
-        plugin,
-        "_request_json_with_retry",
-        AsyncMock(return_value={"features": parcel_features}),
-    ), patch.object(
-        plugin, "_paged_geojson_fetch", AsyncMock(return_value=bldg_features)
-    ):
-        return await plugin._footprint_for_parcel(
-            {"parcel_id": "00326477000"}
-        )
-
-
-def _fp_parcel(**over):
-    attrs = dict(_FP_ATTRS)
-    attrs.update(over)
-    return {
-        "attributes": attrs,
-        "geometry": {"rings": [[[0, 0], [0, 20], [20, 20], [20, 0], [0, 0]]]},
-    }
-
-
-class TestFootprintStructuredOutput:
-    @pytest.mark.asyncio
-    async def test_result_conforms(self, plugin):
-        bldg = [
-            {
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [
-                        [[1, 1], [1, 5], [5, 5], [5, 1], [1, 1]]
-                    ],
-                },
-                "properties": {"OBJECTID": 1, "Category": "General"},
-            }
-        ]
-        _, structured = await _fp_run(plugin, [_fp_parcel()], bldg)
-        _validate(FP_SCHEMA, structured)
-        assert structured["result"] is not None
-        assert structured["result"]["parcel_id"] == "00326477000"
-        assert structured["caveats"], "methodology caveats always apply"
-
-    @pytest.mark.asyncio
-    async def test_not_found_conforms_with_null_result(self, plugin):
-        """The no-parcel path must still emit a valid object."""
-        _, structured = await _fp_run(plugin, [], [])
-        _validate(FP_SCHEMA, structured)
-        assert structured["result"] is None
-        assert "parcel_not_found" in {
-            c["code"] for c in structured["caveats"]
-        }
-
-    @pytest.mark.asyncio
-    async def test_no_independent_lot_conforms(self, plugin):
-        """A condo unit with no lot area yields result: null, not a crash."""
-        _, structured = await _fp_run(
-            plugin, [_fp_parcel(Lot_Size=0.0, Condo_Unit_Number="4B")], []
-        )
-        _validate(FP_SCHEMA, structured)
-        assert structured["result"] is None
-        assert "no_independent_lot" in {
-            c["code"] for c in structured["caveats"]
-        }
-
-    @pytest.mark.asyncio
-    async def test_caveat_messages_match_the_rendering(self, plugin):
-        text, structured = await _fp_run(plugin, [_fp_parcel()], [])
-        for caveat in structured["caveats"]:
-            assert caveat["message"] in text
-
-
 # ── find_features_spanning_classifications ────────────────────────────
 
 
-SPAN_SCHEMA = AnchorageGISPlugin.SPANNING_OUTPUT_SCHEMA
+SPAN_SCHEMA = AlaskaGeoportalPlugin.SPANNING_OUTPUT_SCHEMA
 
 
 def _span_args():
@@ -792,7 +701,7 @@ class TestEmptyResultsStillConform:
     """
 
     def test_empty_query_result_conforms(self, plugin):
-        payload = AnchorageGISPlugin._empty_query_result(
+        payload = AlaskaGeoportalPlugin._empty_query_result(
             item_id="a" * 32, where=None, out_fields=None, limit=50
         )
         _validate(QR_SCHEMA, payload)
@@ -803,7 +712,7 @@ class TestEmptyResultsStillConform:
         """Zero matches is a known count. null is reserved for the
         'this tool does not paginate' case, and conflating them would
         make a complete answer look like an unmeasured one."""
-        payload = AnchorageGISPlugin._empty_query_result(
+        payload = AlaskaGeoportalPlugin._empty_query_result(
             item_id="a" * 32, where="1=0", out_fields=None, limit=10
         )
         assert payload["summary"]["total_count"] == 0
@@ -814,6 +723,6 @@ class TestEmptyResultsStillConform:
         """Guards the whole class: every tool that advertises an
         outputSchema must populate structured_content on the paths this
         suite can reach."""
-        declared = set(AnchorageGISPlugin.TOOL_OUTPUT_SCHEMAS)
+        declared = set(AlaskaGeoportalPlugin.TOOL_OUTPUT_SCHEMAS)
         # Sanity: the two that regressed in production are covered.
         assert {"spatial_query_point", "spatial_query_polygon"} <= declared

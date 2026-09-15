@@ -1,16 +1,23 @@
-"""Ad-hoc production smoke test for the Anchorage GIS MCP server.
+"""Ad-hoc smoke test for the Alaska Geoportal MCP server.
 
 Exercises the JSON-RPC surface and the core tool chain end-to-end
-against the live Lambda. Read-only; paces calls to stay under the
-API Gateway rate limit (5 rps) and WAF per-IP cap (300/5min).
+against a running server -- the prod Lambda by default, or a local
+`scripts/local_server.py` via SMOKE_URL=http://localhost:8000/mcp.
+Read-only; paces calls to stay under the API Gateway rate limit (5 rps)
+and WAF per-IP cap (300/5min).
 """
 
 import json
+import os
+import re
 import sys
 import time
 import urllib.request
 
-URL = "https://622f4qcew8.execute-api.us-west-2.amazonaws.com/prod/mcp"
+# TODO(go-live): replace with the prod API Gateway URL once deployed
+# (`terraform output -raw api_gateway_url`) or the custom domain
+# https://alaska-geoportal.codeforanchorage.org/mcp.
+URL = os.environ.get("SMOKE_URL", "http://localhost:8000/mcp")
 _id = 0
 PASS = "PASS"
 FAIL = "FAIL"
@@ -26,17 +33,21 @@ def rpc(method, params=None):
     req = urllib.request.Request(
         URL,
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "MCP-Protocol-Version": "2025-06-18",
+        },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=90) as r:
         body = json.loads(r.read().decode())
     time.sleep(0.4)  # pace under 5 rps
     return body
 
 
 def call_tool(name, args):
-    return rpc("tools/call", {"name": f"anchorage_gis__{name}", "arguments": args})
+    return rpc("tools/call", {"name": f"alaska_geoportal__{name}", "arguments": args})
 
 
 def text_of(resp):
@@ -49,9 +60,21 @@ def check(label, ok, detail=""):
     print(f"[{mark}] {label}" + (f" -- {detail}" if detail else ""))
 
 
+# Verified 2026-09-15 against the live soa-dnr org (docs/ALASKA_SOURCES.md).
+CWPP_AREAS = "9a91ae205d544b53a35842591afcc2a1"        # POLYGON, 12 rows
+FIRE_SERVICE_AREAS = "45072954dcd84d78947a4294ed990657"  # POLYGON, 32 rows
+BOROUGHS = "72868306fe0648d49cd653bcdf22ea0e"           # CLG_borough_POLY
+FORESTRY_ROADS = "f3298e00f4fa40fdb0d443bb61dcfee3"     # POLYLINE, 3,190 rows
+FORESTRY_BRIDGES = "e9bfc953765d4b279d3316de7967cc08"   # POINT, 183 rows
+AK_PARCELS = "458be3d8aafa47cd882af05cee983f6b"         # POLYGON, ~415k rows
+RS2477_TRAILS = "f97ec4306fb14ed59c71b02ee8cf0f47"      # on-prem DNR, EPSG:3338
+# A DOT&PF layer catalogued in the Geoportal whose service lives in the
+# DOT tenant (services.arcgis.com/r4A0V7UzH9fcLVvv/...). Whether the item
+# record is state-owned or not, it must be REJECTED: by the ownership
+# check if the orgId differs, else by the service-URL allowlist.
+DOT_ROADS_OTHER_TENANT = "bbe5cd90520e41348eef242a8f754172"
+
 # 1. ping
-# The spec defines the ping result as an empty object -- the liveness signal
-# is the successful response itself, not its body.
 try:
     r = rpc("ping")
     check("ping", r.get("result") == {} and "error" not in r, str(r.get("result")))
@@ -67,24 +90,23 @@ try:
     )
     si = r["result"]["serverInfo"]
     pv = r["result"]["protocolVersion"]
-    # serverInfo now reports the configured name (was hardcoded "opencontext"),
-    # and the server echoes the client's requested protocol version.
     check(
         "initialize",
-        si["name"] == "Anchorage GIS MCP" and pv == "2025-03-26",
+        si["name"] == "Alaska Geoportal MCP" and pv == "2025-03-26",
         json.dumps({"serverInfo": si, "protocolVersion": pv}),
     )
 except Exception as e:
     check("initialize", False, repr(e))
 
-# 3. tools/list
+# 3. tools/list -- 14 generic tools, no MOA parcel tools
 try:
     r = rpc("tools/list")
     tools = [t["name"] for t in r["result"]["tools"]]
     check(
         "tools/list",
-        len(tools) == 16
-        and "anchorage_gis__footprint_for_parcel" in tools,
+        len(tools) == 14
+        and "alaska_geoportal__find_parcel" not in tools
+        and "alaska_geoportal__footprint_for_parcel" not in tools,
         f"{len(tools)} tools",
     )
 except Exception as e:
@@ -92,20 +114,19 @@ except Exception as e:
 
 # 4. find_gis_content (discovery)
 try:
-    r = call_tool("find_gis_content", {"topic": "parks", "limit": 6})
+    r = call_tool("find_gis_content", {"topic": "wildfire", "limit": 6})
     t = text_of(r)
-    check("find_gis_content(parks)", "ID:" in t, f"{len(t)} chars")
+    check("find_gis_content(wildfire)", "ID:" in t, f"{len(t)} chars")
 except Exception as e:
-    check("find_gis_content(parks)", False, repr(e))
+    check("find_gis_content(wildfire)", False, repr(e))
 
 # 5. search_spatial_layers -> grab a Feature Service id
 fs_id = None
 try:
     r = call_tool(
         "search_spatial_layers",
-        {"query": "parks", "layer_type": "layers", "limit": 8},
+        {"query": "roads", "layer_type": "layers", "limit": 8},
     )
-    import re
     t = text_of(r)
     m = re.search(r"_Feature Service_\s*--\s*ID: `([0-9a-f]{32})`", t)
     fs_id = m.group(1) if m else None
@@ -114,30 +135,24 @@ except Exception as e:
     check("search_spatial_layers", False, repr(e))
 
 # 6. get_item_details
-if fs_id:
-    try:
-        r = call_tool("get_item_details", {"item_id": fs_id})
-        t = text_of(r)
-        check("get_item_details", "ID:" in t and "Type:" in t, f"{len(t)} chars")
-    except Exception as e:
-        check("get_item_details", False, repr(e))
-
-# 7. get_layer_schema -> capture a field name
-field = None
 try:
-    r = call_tool("get_layer_schema", {"item_id": fs_id})
+    r = call_tool("get_item_details", {"item_id": FIRE_SERVICE_AREAS})
     t = text_of(r)
-    import re
-    # schema lists fields; grab a plausible text field name
-    names = re.findall(r"`([A-Za-z][A-Za-z0-9_]{2,})`", t)
-    field = next((n for n in names if n not in ("OBJECTID", "Shape")), None)
-    check("get_layer_schema", bool(names), f"field sample: {field}")
+    check("get_item_details", "ID:" in t and "Type:" in t, f"{len(t)} chars")
+except Exception as e:
+    check("get_item_details", False, repr(e))
+
+# 7. get_layer_schema -> known field
+try:
+    r = call_tool("get_layer_schema", {"item_id": FIRE_SERVICE_AREAS})
+    t = text_of(r)
+    check("get_layer_schema", "fire_service_area_name" in t, "found fire_service_area_name")
 except Exception as e:
     check("get_layer_schema", False, repr(e))
 
 # 8. query_data count (limit=1 -> TOTAL COUNT)
 try:
-    r = call_tool("query_data", {"item_id": fs_id, "limit": 1})
+    r = call_tool("query_data", {"item_id": FIRE_SERVICE_AREAS, "limit": 1})
     t = text_of(r)
     check("query_data count", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
 except Exception as e:
@@ -145,7 +160,7 @@ except Exception as e:
 
 # 9. query_data listing (limit=3)
 try:
-    r = call_tool("query_data", {"item_id": fs_id, "limit": 3})
+    r = call_tool("query_data", {"item_id": FIRE_SERVICE_AREAS, "limit": 3})
     t = text_of(r)
     ok = "Record 1:" in t and "results above are a sample" not in t
     check("query_data listing (no stale reminder)", ok,
@@ -154,145 +169,126 @@ except Exception as e:
     check("query_data listing (no stale reminder)", False, repr(e))
 
 # 10. get_distinct_values
-if field:
-    try:
-        r = call_tool("get_distinct_values", {"item_id": fs_id, "field": field, "limit": 10})
-        t = text_of(r)
-        check("get_distinct_values", "isError" not in r.get("result", {}), f"field={field}")
-    except Exception as e:
-        check("get_distinct_values", False, repr(e))
+try:
+    r = call_tool("get_distinct_values", {"item_id": FIRE_SERVICE_AREAS, "field": "borough", "limit": 10})
+    t = text_of(r)
+    check("get_distinct_values", "FNSB" in t, "borough codes listed")
+except Exception as e:
+    check("get_distinct_values", False, repr(e))
 
-# 11. spatial_query_point on a polygon layer (Park Land), point in Anchorage
+# 11. spatial_query_point on a polygon layer, point in Fairbanks
 try:
     r = call_tool(
         "spatial_query_point",
-        {"item_id": "466c5b7adafe4468aebcc29347e8c84e", "lon": -149.85, "lat": 61.19},
+        {"item_id": FIRE_SERVICE_AREAS, "lon": -147.72, "lat": 64.84},
     )
     t = text_of(r)
-    check("spatial_query_point", bool(t), t.split("\n")[0][:80])
+    check("spatial_query_point (Fairbanks)", "CITY OF FAIRBANKS" in t, t.split("\n")[0][:80])
 except Exception as e:
-    check("spatial_query_point", False, repr(e))
+    check("spatial_query_point (Fairbanks)", False, repr(e))
 
-# 12. error handling: query a viewer (Web Mapping App) -> graceful, actionable error
+# 12. on-prem DNR ArcGIS Server layer (EPSG:3338) is queryable
 try:
-    r = call_tool("query_data", {"item_id": "b4c05a8ee42d4d44b8c6eb27b5d0158f", "limit": 2})
+    r = call_tool("query_data", {"item_id": RS2477_TRAILS, "limit": 1})
     t = text_of(r)
-    ok = "not a queryable" in t and "find_gis_content" in t
-    check("error handling (viewer rejected gracefully)", ok, t[:80])
+    check("on-prem DNR layer (arcgis.dnr.alaska.gov)", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
 except Exception as e:
-    check("error handling (viewer rejected gracefully)", False, repr(e))
+    check("on-prem DNR layer (arcgis.dnr.alaska.gov)", False, repr(e))
 
-# 13. error handling: bad field -> 'did you mean' / schema recovery hint
+# 13. error handling: bad field -> schema recovery hint
 try:
-    r = call_tool("query_data", {"item_id": fs_id, "where": "Nonexistent_Field='x'"})
+    r = call_tool("query_data", {"item_id": FIRE_SERVICE_AREAS, "where": "Nonexistent_Field='x'"})
     t = text_of(r)
     ok = ("get_layer_schema" in t) or ("does not exist" in t) or ("CASE-SENSITIVE" in t)
     check("error handling (bad field -> recovery hint)", ok, t[:90])
 except Exception as e:
     check("error handling (bad field -> recovery hint)", False, repr(e))
-# -- regression checks for previously-broken behaviours ----------------
-# Each of these was a live bug that is now fixed. They assert on stable
-# aggregates (bucket counts, record counts) rather than OBJECTIDs:
-# Streets_Hosted was republished in April and its OBJECTIDs shifted by
-# ~236k, so a test pinned to them would have rotted silently.
 
-PARK_FACILITIES = "98d46bfe15a046b99645b6d6b32f5d59"   # POINT layer
-COMMUNITY_COUNCIL = "934783d347ee4df5a0c12bd2d0339045"
-STREETS = "9072014f74064419b0641bfc701f0ebd"           # POLYLINE layer
-ASSEMBLY = "8e4f3735298f45fd9d31b99bddae4563"
-PROPERTY_INFO = "57d6ff611f444d75a1bf2b4a1d340163"
+# 14. tenant scoping: a partner-tenant service catalogued in the Geoportal is refused
+try:
+    r = call_tool("query_data", {"item_id": DOT_ROADS_OTHER_TENANT, "limit": 1})
+    res = r.get("result", {})
+    t = text_of(r) if res.get("content") else json.dumps(res)
+    ok = bool(res.get("isError")) and (
+        "not the configured org" in t
+        or "refusing to proxy other ArcGIS Online tenants" in t
+    )
+    check("tenant scoping (partner-tenant service rejected)", ok, t[:90])
+except Exception as e:
+    check("tenant scoping (partner-tenant service rejected)", False, repr(e))
 
-# 14. spatial_query_polygon against a POINT target via filter_item_id
+# 15. spatial_query_polygon against a POINT target via filter_item_id
 try:
     r = call_tool("spatial_query_polygon", {
-        "item_id": PARK_FACILITIES,
-        "filter_item_id": COMMUNITY_COUNCIL,
-        "filter_where": "COUNCIL='Downtown'",
+        "item_id": FORESTRY_BRIDGES,
+        "filter_item_id": BOROUGHS,
+        "filter_where": "NAME='Matanuska-Susitna Borough'",
         "limit": 5,
     })
     t = text_of(r)
     ok = not r.get("result", {}).get("isError") and "No features" not in t
-    check("regression: point-layer target via filter_item_id", ok, t[:80])
+    check("point-layer target via filter_item_id", ok, t[:80])
 except Exception as e:
-    check("regression: point-layer target via filter_item_id", False, repr(e))
+    check("point-layer target via filter_item_id", False, repr(e))
 
-# 15. the same, via inline filter_geometry (a separate code path)
+# 16. the same, via inline filter_geometry (a separate code path)
 try:
     r = call_tool("spatial_query_polygon", {
-        "item_id": PARK_FACILITIES,
+        "item_id": FIRE_SERVICE_AREAS,
         "filter_geometry": {
             "type": "Polygon",
-            "coordinates": [[[-149.92, 61.20], [-149.92, 61.23],
-                             [-149.85, 61.23], [-149.85, 61.20],
-                             [-149.92, 61.20]]],
+            "coordinates": [[[-148.0, 64.7], [-148.0, 65.0],
+                             [-147.4, 65.0], [-147.4, 64.7],
+                             [-148.0, 64.7]]],
         },
         "limit": 5,
     })
     t = text_of(r)
     ok = not r.get("result", {}).get("isError") and "No features" not in t
-    check("regression: point-layer target via inline geometry", ok, t[:80])
+    check("polygon target via inline geometry", ok, t[:80])
 except Exception as e:
-    check("regression: point-layer target via inline geometry", False, repr(e))
+    check("polygon target via inline geometry", False, repr(e))
 
-# 16. search_layers_by_field with no service_keyword
+# 17. search_layers_by_field
 try:
-    r = call_tool("search_layers_by_field", {"field_keyword": "COUNCIL"})
+    r = call_tool("search_layers_by_field", {"field_keyword": "SegmentLengthMiles", "service_keyword": "forestry roads"})
     t = text_of(r)
-    check("regression: search_layers_by_field without service_keyword",
-          "CommunityCouncil" in t, t[:80])
+    check("search_layers_by_field", "Forestry" in t, t[:80])
 except Exception as e:
-    check("regression: search_layers_by_field without service_keyword",
-          False, repr(e))
+    check("search_layers_by_field", False, repr(e))
 
-# 17. aggregate_by_polygon with a POLYLINE source
+# 18. aggregate_by_polygon with a POLYLINE source (road miles per borough)
 try:
     r = call_tool("aggregate_by_polygon", {
-        "source_item_id": STREETS,
-        "aggregation_item_id": ASSEMBLY,
-        "group_by_field": "ASSEMBLY_SECTION",
+        "source_item_id": FORESTRY_ROADS,
+        "aggregation_item_id": BOROUGHS,
+        "group_by_field": "NAME",
+        "sum_fields": ["SegmentLengthMiles"],
     })
     sc = r.get("result", {}).get("structuredContent") or {}
     summ = sc.get("summary", {})
-    # The regression was that a POLYLINE source failed outright. Assert
-    # the invariants that prove it works -- every source feature bucketed,
-    # at least one bucket -- rather than an exact bucket count. Bucket
-    # count depends entirely on how source_where narrows the query, so
-    # pinning it would make this test a scope assertion, not a
-    # capability one.
     ok = (
         not r.get("result", {}).get("isError")
-        and summ.get("unmatched") == 0
         and (summ.get("buckets") or 0) >= 1
         and (summ.get("source_features") or 0) > 0
     )
-    check("regression: polyline source aggregation", ok,
+    check("polyline source aggregation (road miles by borough)", ok,
           f"buckets={summ.get('buckets')} unmatched={summ.get('unmatched')} "
           f"source={summ.get('source_features')}")
 except Exception as e:
-    check("regression: polyline source aggregation", False, repr(e))
+    check("polyline source aggregation (road miles by borough)", False, repr(e))
 
-# 18. UNION inside a string literal must not trip the WHERE sanitizer
+# 19. statewide parcels: count-only on a 415k-row layer stays fast
 try:
     r = call_tool("query_data", {
-        "item_id": PROPERTY_INFO,
-        "where": "Parcel_Address LIKE '%UNION%'",
-        "out_fields": "Parcel_ID,Parcel_Address",
-        "limit": 10,
+        "item_id": AK_PARCELS,
+        "where": "local_gov='Fairbanks North Star Borough'",
+        "limit": 1,
     })
     t = text_of(r)
-    ok = "Forbidden keyword" not in t and not r.get("result", {}).get("isError")
-    check("regression: UNION inside a string literal allowed", ok, t[:80])
+    check("statewide parcels count (FNSB)", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
 except Exception as e:
-    check("regression: UNION inside a string literal allowed", False, repr(e))
-
-# 19. the assessor-trap banner fires on PropertyInformation_Hosted
-try:
-    r = call_tool("query_data", {"item_id": PROPERTY_INFO, "limit": 1})
-    t = text_of(r)
-    check("assessor trap banner present", "ASSESSOR DATA TRAPS" in t, t[:70])
-except Exception as e:
-    check("assessor trap banner present", False, repr(e))
-
+    check("statewide parcels count (FNSB)", False, repr(e))
 
 
 print("\n=== SUMMARY ===")

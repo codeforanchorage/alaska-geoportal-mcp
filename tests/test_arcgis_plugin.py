@@ -311,7 +311,7 @@ class TestWhereValidator:
         assert result == "deleted_at IS NULL"
 
     # Quote-awareness: forbidden tokens inside quoted string literals
-    # are data, not SQL (real Anchorage streets include Credit Union Dr)
+    # are data, not SQL (real street names include "Credit Union Dr")
     # and must pass through unmodified.
     @pytest.mark.parametrize(
         "where",

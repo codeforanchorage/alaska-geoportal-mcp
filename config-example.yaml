@@ -22,9 +22,9 @@
 
 ---
 # Server metadata
-server_name: "Your Organization OpenData MCP" # e.g., "Boston OpenData MCP"
+server_name: "Your Organization OpenData MCP" # e.g., "Alaska Geoportal MCP"
 description: "Your organization's open data MCP server - Safe, conversational access to your open data"
-organization: "Your Organization Name" # e.g., "City of Boston"
+organization: "Your Organization Name" # e.g., "State of Alaska"
 
 # Plugin configuration
 # ====================
@@ -52,6 +52,21 @@ plugins:
     timeout: 120
     # token: "${ARCGIS_TOKEN}"  # Optional: Bearer token for private items
 
+  # Built-in: Alaska Geoportal (this fork's plugin). Statewide ArcGIS
+  # Online org of the Alaska Geospatial Office (soa-dnr). See
+  # config-alaska-geoportal.yaml for the verified, deployable values.
+  alaska_geoportal:
+    enabled: false # Set to true to use (and disable the others)
+    portal_base_url: "https://soa-dnr.maps.arcgis.com/sharing/rest"
+    org_id: "7HDiw78fcUiM2BWn" # from .../sharing/rest/portals/self?f=json
+    # One or more ArcGIS group ids (32-char hex) searched as a union.
+    gallery_group_ids:
+      - "a5055ea72899425c8cc4e01b32658a45"
+      - "18028130a7a14132bd922bcd830f27c6"
+    city_name: "State of Alaska"
+    gallery_url: "https://gis.data.alaska.gov/search"
+    timeout: 20 # Must stay below aws.lambda_timeout
+
   # yamllint disable rule:comments-indentation
   # Custom: Add your own plugins here
   # Example:
@@ -63,10 +78,10 @@ plugins:
 
 # AWS deployment settings
 aws:
-  region: "us-east-1" # AWS region for Lambda
+  region: "us-west-2" # AWS region for Lambda
   lambda_name: "your-opendata-mcp" # Lambda function name (will be auto-generated if not set)
   lambda_memory: 512 # Lambda memory in MB (128-10240)
-  lambda_timeout: 120 # Lambda timeout in seconds (max 900)
+  lambda_timeout: 28 # Must stay under the 29s API Gateway integration limit
 
 # Logging configuration
 logging:
