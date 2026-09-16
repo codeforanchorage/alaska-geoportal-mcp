@@ -142,6 +142,12 @@ resource "aws_api_gateway_deployment" "mcp_deployment" {
       aws_api_gateway_integration.mcp_get_integration.id,
       aws_api_gateway_integration.mcp_delete_integration.id,
       aws_api_gateway_integration.mcp_options_integration.id,
+      # Landing page on GET / (landing.tf). The HTML is part of the hash so
+      # an edit to the page redeploys the stage.
+      aws_api_gateway_method.root_get.id,
+      aws_api_gateway_integration.root_get.id,
+      aws_api_gateway_integration_response.root_get_200.id,
+      sha1(local.landing_html),
       # Hardened GCC route (empty list when var.enable_gcc_route = false).
       aws_api_gateway_resource.mcp_gcc[*].id,
       aws_api_gateway_method.mcp_gcc_post[*].id,
@@ -166,6 +172,7 @@ resource "aws_api_gateway_deployment" "mcp_deployment" {
     aws_api_gateway_integration.mcp_delete_integration,
     aws_api_gateway_integration.mcp_options_integration,
     aws_api_gateway_method_response.mcp_post_response_200,
+    aws_api_gateway_integration_response.root_get_200,
     # Hardened GCC route (no-ops when var.enable_gcc_route = false).
     aws_api_gateway_method.mcp_gcc_post,
     aws_api_gateway_integration.mcp_gcc_post_integration,

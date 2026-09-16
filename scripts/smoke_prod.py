@@ -293,6 +293,20 @@ except Exception as e:
     check("statewide parcels count (FNSB)", False, repr(e))
 
 
+# 20. GET / serves the human landing page (API Gateway MOCK, no Lambda)
+try:
+    root = URL.rsplit("/mcp", 1)[0] + "/"
+    req = urllib.request.Request(root, headers={"Accept": "text/html"}, method="GET")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        body = r.read().decode("utf-8", "replace")
+        ctype = r.headers.get("Content-Type", "")
+        code = r.status
+    ok = code == 200 and "text/html" in ctype and "/mcp" in body and "Alaska Geoportal MCP" in body
+    check("landing page on GET /", ok, f"{code} {ctype}")
+except Exception as e:
+    check("landing page on GET /", False, repr(e))
+
+
 print("\n=== SUMMARY ===")
 n_pass = sum(1 for _, ok in results if ok)
 print(f"{n_pass}/{len(results)} checks passed")

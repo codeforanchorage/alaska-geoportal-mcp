@@ -105,7 +105,7 @@ spike, that limit and the stage throttle are the levers.
 ## Health / smoke
 
 ```bash
-# 19 checks; defaults to a local server, point at prod with SMOKE_URL
+# 20 checks; defaults to prod, point at prod with SMOKE_URL
 PYTHONIOENCODING=utf-8 SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp \
   python scripts/smoke_prod.py
 PYTHONIOENCODING=utf-8 python scripts/smoke_aggregate.py  # direct-plugin aggregation smoke
