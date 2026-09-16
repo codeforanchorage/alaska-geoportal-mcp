@@ -2854,7 +2854,8 @@ class TestErrorRewriter:
         )
         assert "`WellDepth`" in out and "`PumpGPM`" in out
         assert "stored as TEXT" in out
-        assert "CAST(PumpGPM AS INTEGER) > 0" in out or "CAST(WellDepth AS INTEGER) > 0" in out
+        assert "NOT LIKE '%[^0-9]%' AND CAST(PumpGPM AS INTEGER) > 0" in out
+        assert "non-numeric value" in out
         assert "get_layer_schema(item_id='f66b10eb208b45569a0ea95e974e5dc0')" in out
         # Quoted numbers are text comparisons and must NOT be flagged.
         assert "`Region`" not in out
