@@ -1,11 +1,12 @@
 # Alaska Geoportal MCP — Operations Runbook
 
 > **Status:** deployed 2026-09-15 (`./scripts/deploy.sh -e prod`, workspace
-> `alaska-geoportal-prod`). The fleet WAF entry in mcp-stats is applied.
-> Custom-domain cutover: the ACM certificate exists and is waiting on its
-> DNS validation CNAME in Dreamhost; once it is ISSUED, re-run the deploy
-> to bind `alaska-geoportal.codeforanchorage.org` and add the second
-> CNAME (`custom_domain_target` output).
+> `alaska-geoportal-prod`). Fleet WAF entry applied in mcp-stats. ACM cert
+> issued and the API Gateway custom domain is bound. DNS (Dreamhost, managed
+> by hand): `_c99024238c87cb187f66ebcb3c8f9957.alaska-geoportal` CNAME to
+> ACM for validation, and `alaska-geoportal` CNAME to
+> `d-495mjbzgx2.execute-api.us-west-2.amazonaws.com` (the
+> `custom_domain_target` output) for traffic.
 
 Prod stack: Lambda `alaska-geoportal-mcp-prod`, API Gateway `ae6gj7yvfg`
 (stage `prod`), us-west-2, account `420839047325`.
