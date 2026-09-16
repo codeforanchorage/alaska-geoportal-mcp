@@ -357,6 +357,26 @@ class TestWhereValidatorAgainstSchema:
             "STATUS='Active'", {"STATUS", "NAME"}
         )
 
+    @pytest.mark.parametrize(
+        "where",
+        [
+            "CAST(WellDepth AS INTEGER) > 500",
+            "CAST(WellDepth AS FLOAT) >= 0.5 AND NAME <> ''",
+            "cast(WellDepth as int) > 0",
+        ],
+    )
+    def test_cast_type_names_are_not_fields(self, where):
+        """CAST(field AS INTEGER) is the only way to compare a text-typed
+        numeric field to a number on ArcGIS Server; the type name must
+        not be mistaken for a (missing) field reference."""
+        WhereValidator.validate_against_schema(where, {"WellDepth", "NAME"})
+
+    def test_cast_still_checks_the_real_field(self):
+        with pytest.raises(ValueError, match="WellDeep"):
+            WhereValidator.validate_against_schema(
+                "CAST(WellDeep AS INTEGER) > 0", {"WellDepth"}
+            )
+
     def test_typo_field_raises_with_suggestion(self):
         with pytest.raises(ValueError, match="STATUUS"):
             WhereValidator.validate_against_schema(

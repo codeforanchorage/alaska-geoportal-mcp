@@ -147,6 +147,13 @@ class WhereValidator:
             "LENGTH", "LEN", "SUBSTRING", "SUBSTR",
             "CHARINDEX", "POSITION", "COALESCE", "NULLIF",
             "CAST", "AS", "EXTRACT", "TO_DATE", "TO_TIMESTAMP",
+            # Type names inside CAST(field AS <type>); ArcGIS standardized
+            # SQL accepts these. Without them "INTEGER" is read as a
+            # field reference and CAST() -- the only way to compare a
+            # text-typed numeric field to a number -- is rejected.
+            "INTEGER", "INT", "SMALLINT", "BIGINT", "FLOAT", "DOUBLE",
+            "REAL", "NUMERIC", "DECIMAL", "VARCHAR", "CHAR", "STRING",
+            "TEXT", "BOOLEAN", "DATETIME",
             "ABS", "ROUND", "CEIL", "CEILING", "FLOOR",
             "MIN", "MAX", "SUM", "AVG", "COUNT", "STDDEV",
             "ANY", "ALL", "SOME", "DISTINCT",
