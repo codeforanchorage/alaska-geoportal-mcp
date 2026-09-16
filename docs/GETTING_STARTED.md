@@ -69,9 +69,10 @@ See [Testing](TESTING.md) for more.
 copy that `scripts/local_server.py` reads and that `deploy.sh` bundles into
 the Lambda package. Edit the former, then `cp` it over the latter. The
 `instructions` block is what the model sees at `initialize`; the
-`gallery_group_ids` list is which Geoportal groups are searched. Verified
-org and group ids, and why only state-owned groups are listed, are in
-[ALASKA_SOURCES.md](ALASKA_SOURCES.md).
+`gallery_group_ids` list is which Geoportal groups are searched, and
+`partner_orgs` is which Alaska organizations' layers may be queried besides
+the state's. Verified org and group ids, and why federal partners are
+excluded, are in [ALASKA_SOURCES.md](ALASKA_SOURCES.md).
 
 Validate before deploying:
 
@@ -101,7 +102,7 @@ postures, alarms, logs) are in the [Runbook](RUNBOOK.md).
 |-------|----------|
 | Claude "can't connect" | The saved URL must end in `/mcp`. The bare hostname serves a landing page that says so. |
 | `Multiple Plugins Enabled` at startup | Only `alaska_geoportal` may be `enabled: true` in `config.yaml`. |
-| A layer is refused: "belongs to org … not the configured org" | It's a partner-org layer (borough, ADF&G, DOT&PF, federal). By design; see [SECURITY.md](SECURITY.md) and [ALASKA_SOURCES.md](ALASKA_SOURCES.md). |
+| A layer is refused: "not the configured org or one of its … partner orgs" | It's a federal-partner layer (or an Alaska org not yet in `partner_orgs`). By design; see [SECURITY.md](SECURITY.md) and [ALASKA_SOURCES.md](ALASKA_SOURCES.md). |
 | `Unable to complete operation` on a WHERE clause | Usually a numeric comparison on a String-typed field. The error now tells you which field and gives the guarded `CAST` form. |
 | Lambda 5xx | `aws logs tail /aws/lambda/alaska-geoportal-mcp-prod --since 30m`; see the Runbook. |
 
