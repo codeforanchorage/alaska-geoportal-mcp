@@ -12,7 +12,25 @@
 Prod stack: Lambda `alaska-geoportal-mcp-prod`, API Gateway `ae6gj7yvfg`
 (stage `prod`), us-west-2, account `420839047325`.
 Raw URL: `https://ae6gj7yvfg.execute-api.us-west-2.amazonaws.com/prod/mcp`.
-Public URL (after DNS): `https://alaska-geoportal.codeforanchorage.org/mcp`.
+Public URL: `https://alaska-geoportal.codeforanchorage.org/mcp`.
+Landing page: `https://alaska-geoportal.codeforanchorage.org/` (GET only).
+
+## Routes
+
+| Path | Method | Served by | Purpose |
+|---|---|---|---|
+| `/mcp` | POST | Lambda | MCP JSON-RPC (the connector URL) |
+| `/mcp` | GET, DELETE, OPTIONS | Lambda | Streamable-HTTP plumbing; GET answers 405 (no SSE stream) |
+| `/` | GET | API Gateway MOCK (`terraform/aws/landing.tf`) | Human landing page: what the server is, the `/mcp` URL, repo link. No Lambda invocation, cached 1h |
+| anything else | any | API Gateway | 403 `Missing Authentication Token` (no such route) |
+
+The landing page exists because the first connector attempt was saved
+without the `/mcp` path and got a bare 403 at `/`; it also absorbs the
+scanner probes a public hostname attracts without costing a Lambda call.
+Edit the HTML in `landing.tf` (Velocity template: keep `$` and `#` out of
+the body) and redeploy -- the page text is hashed into the stage's
+redeploy trigger. A request with no `User-Agent` header at all gets 403
+from the fleet WAF's managed common rule set; that is expected.
 
 ## 🔴 Kill switch (runaway traffic / cost)
 
@@ -105,7 +123,8 @@ spike, that limit and the stage throttle are the levers.
 ## Health / smoke
 
 ```bash
-# 20 checks; defaults to prod, point at prod with SMOKE_URL
+# 20 checks (19 MCP + the GET / landing page); defaults to the raw API
+# Gateway URL, point at the custom domain or a local server with SMOKE_URL
 PYTHONIOENCODING=utf-8 SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp \
   python scripts/smoke_prod.py
 PYTHONIOENCODING=utf-8 python scripts/smoke_aggregate.py  # direct-plugin aggregation smoke

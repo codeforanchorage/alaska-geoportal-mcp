@@ -68,12 +68,26 @@ uv sync                                   # or: pip install -r requirements.txt
 cp config-alaska-geoportal.yaml config.yaml
 PYTHONIOENCODING=utf-8 python scripts/local_server.py   # http://localhost:8000/mcp
 
-# in another shell: 19 end-to-end checks against the live org
+# in another shell: 20 end-to-end checks against the live org
 SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py
 ```
 
-Connect Claude Desktop / Claude Code through `stdio_bridge.py` or the Go client
-in `client/`, or add the URL as a custom connector once deployed. See
+## Connecting
+
+The production server is at:
+
+```
+https://alaska-geoportal.codeforanchorage.org/mcp
+```
+
+In Claude: Settings, Connectors, Add custom connector, paste the URL above.
+The `/mcp` path is required; the bare hostname
+(<https://alaska-geoportal.codeforanchorage.org/>) serves a short landing
+page that repeats these instructions, so a pasted URL without the path
+tells you what went wrong instead of failing silently.
+
+Claude Desktop and Claude Code can also connect through `stdio_bridge.py` or
+the Go client in `client/`. See
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
 ## Deploy
