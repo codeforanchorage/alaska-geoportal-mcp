@@ -1,15 +1,16 @@
 # Alaska Geoportal MCP — Operations Runbook
 
-> **Status: NOT YET DEPLOYED.** This runbook is carried over from the
-> Anchorage fork with names updated. Fill in the API Gateway id once
-> `./scripts/deploy.sh -e prod` has run, and complete the go-live TODOs in
-> `terraform/aws/prod.tfvars` first. Done 2026-09-15: S3 state bucket
-> `alaska-geoportal-opencontext-tfstate` and the alarms SNS topic exist.
-> Still open: apply the mcp-stats `fleet_waf_members` entry, DNS/ACM.
+> **Status:** deployed 2026-09-15 (`./scripts/deploy.sh -e prod`, workspace
+> `alaska-geoportal-prod`). The fleet WAF entry in mcp-stats is applied.
+> Custom-domain cutover: the ACM certificate exists and is waiting on its
+> DNS validation CNAME in Dreamhost; once it is ISSUED, re-run the deploy
+> to bind `alaska-geoportal.codeforanchorage.org` and add the second
+> CNAME (`custom_domain_target` output).
 
-Prod stack (planned): Lambda `alaska-geoportal-mcp-prod`, API Gateway
-`<TBD>` (stage `prod`), us-west-2, account `420839047325`.
-Public URL: `https://alaska-geoportal.codeforanchorage.org/mcp`.
+Prod stack: Lambda `alaska-geoportal-mcp-prod`, API Gateway `ae6gj7yvfg`
+(stage `prod`), us-west-2, account `420839047325`.
+Raw URL: `https://ae6gj7yvfg.execute-api.us-west-2.amazonaws.com/prod/mcp`.
+Public URL (after DNS): `https://alaska-geoportal.codeforanchorage.org/mcp`.
 
 ## 🔴 Kill switch (runaway traffic / cost)
 

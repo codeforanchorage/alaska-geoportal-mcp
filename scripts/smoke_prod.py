@@ -1,7 +1,7 @@
 """Ad-hoc smoke test for the Alaska Geoportal MCP server.
 
 Exercises the JSON-RPC surface and the core tool chain end-to-end
-against a running server -- the prod Lambda by default, or a local
+against a running server -- the prod API Gateway by default, or a local
 `scripts/local_server.py` via SMOKE_URL=http://localhost:8000/mcp.
 Read-only; paces calls to stay under the API Gateway rate limit (5 rps)
 and WAF per-IP cap (300/5min).
@@ -14,10 +14,12 @@ import sys
 import time
 import urllib.request
 
-# TODO(go-live): replace with the prod API Gateway URL once deployed
-# (`terraform output -raw api_gateway_url`) or the custom domain
-# https://alaska-geoportal.codeforanchorage.org/mcp.
-URL = os.environ.get("SMOKE_URL", "http://localhost:8000/mcp")
+# Prod API Gateway (deployed 2026-09-15). Override with SMOKE_URL, e.g.
+# http://localhost:8000/mcp for a local server or the custom domain
+# https://alaska-geoportal.codeforanchorage.org/mcp once DNS is live.
+URL = os.environ.get(
+    "SMOKE_URL", "https://ae6gj7yvfg.execute-api.us-west-2.amazonaws.com/prod/mcp"
+)
 _id = 0
 PASS = "PASS"
 FAIL = "FAIL"

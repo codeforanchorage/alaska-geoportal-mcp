@@ -133,11 +133,11 @@ Two AWS sizing values are read from `config.yaml` in preference to `terraform/aw
 Terraform and the deploy script are configured for `alaska-geoportal-prod` /
 `alaska-geoportal-staging` (workspaces, Lambda names, tfstate bucket
 `alaska-geoportal-opencontext-tfstate`, custom domain
-`alaska-geoportal.codeforanchorage.org`) but **nothing has been applied yet**.
-The tfstate bucket and the alarms SNS topic were created by CLI on
-2026-09-15. Before the first `./scripts/deploy.sh -e prod`, apply the
-`alaska-geoportal` entry in mcp-stats' `fleet_waf_members` (see the TODO in
-`terraform/aws/prod.tfvars`) and set up DNS/ACM for the custom domain.
+`alaska-geoportal.codeforanchorage.org`). First prod apply ran 2026-09-15:
+API Gateway `ae6gj7yvfg`, raw URL in `docs/RUNBOOK.md`. The tfstate bucket,
+alarms SNS topic and mcp-stats `fleet_waf_members` entry all exist. The
+custom domain binds on the next deploy after the ACM certificate is ISSUED
+(DNS validation CNAME lives in Dreamhost).
 
 ## CI
 

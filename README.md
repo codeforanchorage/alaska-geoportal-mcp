@@ -80,9 +80,9 @@ in `client/`, or add the URL as a custom connector once deployed. See
 
 AWS Lambda + API Gateway via Terraform (`terraform/aws/`), one Lambda per
 fork. `./scripts/deploy.sh -e prod` packages `config.yaml` into the zip and
-plans before applying. This fork is configured but **not yet deployed**; the
-go-live TODOs (state bucket, alarms topic, fleet WAF entry) are in
-`terraform/aws/prod.tfvars` and [docs/RUNBOOK.md](docs/RUNBOOK.md).
+plans before applying. Deployed to prod on 2026-09-15; the custom domain
+cutover is pending DNS. Operations notes are in
+[docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Documentation
 
