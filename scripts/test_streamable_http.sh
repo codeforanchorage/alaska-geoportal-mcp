@@ -114,16 +114,16 @@ TOOL_COUNT=$(echo "$LIST_RESPONSE" | jq '.result.tools | length')
 echo -e "${GREEN}Found $TOOL_COUNT tools${NC}"
 echo ""
 
-# Step 3: Call a tool (ckan__search_datasets)
-echo -e "${BLUE}Step 3: Call tool (ckan__search_datasets)${NC}"
+# Step 3: Call a tool (alaska_geoportal__find_gis_content)
+echo -e "${BLUE}Step 3: Call tool (alaska_geoportal__find_gis_content)${NC}"
 CALL_REQUEST='{
   "jsonrpc": "2.0",
   "id": 3,
   "method": "tools/call",
   "params": {
-    "name": "ckan__search_datasets",
+    "name": "alaska_geoportal__find_gis_content",
     "arguments": {
-      "query": "traffic",
+      "topic": "wildfire",
       "limit": 5
     }
   }
