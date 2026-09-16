@@ -1,9 +1,9 @@
-# Security Model — Anchorage GIS MCP
+# Security Model — Alaska Geoportal MCP
 
-This document describes the threat model and the defenses currently
-enforced for the public deployment at
-`https://anchorage-gis.codeforanchorage.org/mcp`. Future contributors
-should read this before changing anything in `plugins/anchorage_gis/`,
+This document describes the threat model and the defenses enforced for
+the (planned) public deployment at
+`https://alaska-geoportal.codeforanchorage.org/mcp`. Future contributors
+should read this before changing anything in `plugins/alaska_geoportal/`,
 `server/`, or `terraform/aws/`.
 
 ## Threat model
@@ -11,9 +11,12 @@ should read this before changing anything in `plugins/anchorage_gis/`,
 - **Endpoint:** publicly reachable, unauthenticated, read-only over
   HTTPS. Anyone can issue JSON-RPC calls. Browsers, native MCP clients,
   and arbitrary HTTP clients all reach the same Lambda.
-- **Data:** the MCP only proxies to the Municipality of Anchorage's
-  ArcGIS Online portal (`muniorg.maps.arcgis.com`) and on-prem GIS
-  hosts (`*.muni.org`). No write paths exist; no secrets are stored.
+- **Data:** the MCP only proxies to the State of Alaska Geoportal's
+  ArcGIS Online org (`soa-dnr.maps.arcgis.com`, org id
+  `7HDiw78fcUiM2BWn`) and on-prem State of Alaska GIS hosts
+  (`*.alaska.gov` -- in practice `arcgis.dnr.alaska.gov` and
+  `geoportal.dggs.dnr.alaska.gov`). No write paths exist; no secrets
+  are stored.
 - **Realistic risks:**
   1. Denial of wallet (Lambda invocations, upstream Esri API spam).
   2. Tenant-scope creep — using the MCP as an open proxy for arbitrary
@@ -55,16 +58,18 @@ These two checks together close the SSRF and tenant-scope-creep
 surface, and must stay in sync:
 
 - **Service-URL host allowlist**
-  (`plugins/anchorage_gis/plugin.py::_validate_service_url`):
-  - `*.muni.org` is accepted by suffix.
+  (`plugins/alaska_geoportal/plugin.py::_validate_service_url`):
+  - `*.alaska.gov` is accepted by suffix (exact suffix match: a
+    look-alike such as `evil-alaska.gov` or `alaska.gov.evil.com` is
+    refused).
   - For `*.arcgis.com`, the URL must either match the configured portal
-    host (`muniorg.maps.arcgis.com`) or carry the configured `org_id`
-    (`Ce3DhLRthdwbHlfF`) as the first path segment. This rejects
+    host (`soa-dnr.maps.arcgis.com`) or carry the configured `org_id`
+    (`7HDiw78fcUiM2BWn`) as the first path segment. This rejects
     `services.arcgis.com/<other-org>/...`,
     `tiles.arcgis.com/<other-org>/...`, etc.
   - All other hosts are refused.
 - **Item-ID ownership check**
-  (`plugins/anchorage_gis/plugin.py::_assert_owned_by_configured_org`):
+  (`plugins/alaska_geoportal/plugin.py::_assert_owned_by_configured_org`):
   - `get_dataset` rejects any item whose `orgId` does not match the
     configured org (case-insensitive). This is the choke point for
     every tool that resolves an item by ID, including
@@ -75,9 +80,16 @@ surface, and must stay in sync:
     defense-in-depth in case Esri ever returns matches that bypass the
     `orgid:` query clause.
   - `_search_gallery` is intentionally *not* org-filtered — the
-    gallery is curator-scoped by group and may contain MOA-curated
-    cross-org items in the listing. Any drill-down still goes through
-    `get_dataset` and is rejected if non-MOA.
+    gallery is scoped by the configured `gallery_group_ids` and may
+    list cross-org items. Any drill-down still goes through
+    `get_dataset` and is rejected if not owned by the state org.
+  - **Statewide consequence:** the Geoportal Hub catalog spans 45
+    groups, ~30 of them owned by partner orgs (boroughs, ADF&G, DOT&PF,
+    DEC, USFS, BLM ...), and the state-owned "Federal Partner" groups
+    point at federal tenants' services. Those layers are refused here
+    by design. Widening the allowlist to partner tenants is a scope
+    decision, not a bug fix -- see `docs/ALASKA_SOURCES.md` for the
+    per-org fork alternative.
 
 ### Input validation
 
@@ -142,24 +154,27 @@ These are documented in the security review and not yet shipped.
 
 ## Verifying a change
 
-Before merging anything that touches `plugins/anchorage_gis/`,
+Before merging anything that touches `plugins/alaska_geoportal/`,
 `server/`, `terraform/aws/`, or `core/`:
 
-1. `pytest tests/test_anchorage_gis_plugin.py -q` — all must pass,
+1. `pytest tests/test_alaska_geoportal_plugin.py -q` — all must pass,
    including `TestValidateServiceUrl`, `TestItemOwnership`, and
    `TestSearchOrgLayersFilter`.
 2. Smoke-test locally:
    ```bash
    PYTHONIOENCODING=utf-8 venv/Scripts/python scripts/local_server.py
    ```
-   Then issue `query_data` against a known MOA item
-   (e.g. `858fddc3012e4cd5b4e48d44dc84f4e0`). Records should return.
+   Then issue `query_data` against a known state item
+   (e.g. Fire Service Areas `45072954dcd84d78947a4294ed990657`, or the
+   on-prem RS2477 Trails `f97ec4306fb14ed59c71b02ee8cf0f47`). Records
+   should return. `scripts/smoke_prod.py` does both.
 3. For changes to `_validate_service_url` or `_assert_owned_*`, also
-   confirm a non-MOA item ID is rejected with a clear error.
+   confirm a partner-org item ID (e.g. DOT&PF Roads and Highways
+   `bbe5cd90520e41348eef242a8f754172`) is rejected with a clear error.
 4. Deploy with `./scripts/deploy.sh --environment prod`; this script
    plans first and requires explicit `yes` before applying.
 
 ## Reporting issues
 
 Email `brendanbabb@gmail.com` for sensitive reports. Public issues
-can go to <https://github.com/codeforanchorage/anchorage-gis-mcp/issues>.
+can go to <https://github.com/codeforanchorage/alaska-geoportal-mcp/issues>.
