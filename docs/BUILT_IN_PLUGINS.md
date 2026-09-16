@@ -1,8 +1,63 @@
 # Built-in Plugins Reference
 
-OpenContext includes built-in plugins for CKAN and Socrata open data portals.
+This fork deploys one plugin, **Alaska Geoportal**. The framework's generic
+CKAN, ArcGIS Hub and Socrata plugins are still in `plugins/` for reference
+and are disabled in `config.yaml`; only one plugin may be enabled.
 
-## CKAN Plugin
+## Alaska Geoportal Plugin (`alaska_geoportal`)
+
+Statewide access to the State of Alaska Geoportal (Alaska Geospatial
+Office / DNR ArcGIS Online org `soa-dnr`). 14 read-only tools; the full
+list with one-line descriptions is in the [README](../README.md#tools-14-all-read-only).
+
+### Configuration
+
+```yaml
+plugins:
+  alaska_geoportal:
+    enabled: true
+    portal_base_url: "https://soa-dnr.maps.arcgis.com/sharing/rest"
+    org_id: "7HDiw78fcUiM2BWn"
+    gallery_group_ids:                # ArcGIS group ids searched as a union
+      - "a5055ea72899425c8cc4e01b32658a45"
+      - "18028130a7a14132bd922bcd830f27c6"
+      # ... see config-alaska-geoportal.yaml for the verified full list
+    city_name: "State of Alaska"
+    gallery_url: "https://gis.data.alaska.gov/search"
+    timeout: 20                       # must stay below aws.lambda_timeout
+```
+
+`gallery_group_ids` entries must be 32-character hex ArcGIS group ids.
+The verified org and group ids, and the reasoning for which groups are
+included, are in [ALASKA_SOURCES.md](ALASKA_SOURCES.md).
+
+### Behaviour worth knowing
+
+- Only items owned by `org_id` are queryable; partner-org layers in the
+  catalog are listed by search but refused on query ([SECURITY.md](SECURITY.md)).
+- Service URLs must be on the org's own ArcGIS Online tenant or on
+  `*.alaska.gov` (DNR / DGGS ArcGIS Servers).
+- Web Mercator `Shape__Area` is corrected per feature by `cos²(lat)`;
+  EPSG:3338 areas pass through as true square metres.
+- Every query response carries data-freshness and coverage caveats; the
+  coverage check is statewide and antimeridian-aware.
+- WHERE clauses go through the shared validator in
+  `plugins/arcgis/where_validator.py` (keyword denylist, identifier check
+  against the layer schema, `CAST(field AS <type>)` allowed).
+
+### Example
+
+```
+find_gis_content(topic="forestry roads")
+get_layer_schema(item_id="f3298e00f4fa40fdb0d443bb61dcfee3")
+aggregate_by_polygon(source_item_id="f3298e00f4fa40fdb0d443bb61dcfee3",
+                     aggregation_item_id="72868306fe0648d49cd653bcdf22ea0e",
+                     group_by_field="NAME", sum_fields=["SegmentLengthMiles"])
+```
+
+---
+
+## CKAN Plugin (framework, disabled here)
 
 For CKAN-based open data portals (e.g., data.boston.gov, data.gov, data.gov.uk).
 
@@ -52,7 +107,7 @@ This plugin uses CKAN's Action API:
 
 See [CKAN API documentation](https://docs.ckan.org/en/latest/api/) for details.
 
-## Socrata Plugin
+## Socrata Plugin (framework, disabled here)
 
 For Socrata-based open data portals (e.g., data.cityofchicago.org, data.cityofnewyork.us, data.seattle.gov).
 
@@ -121,4 +176,5 @@ If your portal doesn't use CKAN, you can create a custom plugin. See [Custom Plu
 
 ## Examples
 
-See [examples/](../examples/) for complete configuration examples.
+`config-alaska-geoportal.yaml` is the complete, deployed configuration for
+this fork; `config-example.yaml` shows every plugin's keys.

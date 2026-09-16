@@ -1,215 +1,132 @@
 # Frequently Asked Questions
 
-## General
+## About the server
 
-### What is OpenContext?
+### What is this?
 
-OpenContext is an extensible MCP framework template that governments can fork to deploy MCP servers for their civic data platforms. Each fork deploys exactly ONE MCP server with ONE plugin enabled.
+An MCP (Model Context Protocol) server that lets an AI assistant query the
+State of Alaska Geoportal, the Alaska Geospatial Office's ArcGIS Online
+catalog of statewide GIS layers, through 14 read-only tools: catalog
+search, layer schema, attribute and spatial queries, and aggregation. It
+answers questions like "how many miles of forestry road are in the Mat-Su
+Borough" from the official layers and states each layer's caveats.
 
-### Why "One Fork = One MCP Server"?
+### How do I use it?
 
-This architecture keeps deployments simple, independently scalable, and easy to maintain. See [Architecture Guide](ARCHITECTURE.md) for details.
+Add `https://alaska-geoportal.codeforanchorage.org/mcp` as a custom
+connector in Claude (Settings → Connectors). Any MCP client that speaks
+streamable HTTP works. The `/mcp` path is required. There is no login.
 
-### Can I deploy multiple plugins?
+### Is it free? Is there a rate limit?
 
-No. Each fork must deploy exactly ONE plugin. To deploy multiple plugins, fork the repository multiple times (one fork per plugin).
+Free and public. Traffic is capped at roughly 5 requests per second overall
+and 300 requests per IP per five minutes; you get a 429 beyond that. All
+claude.ai users share a handful of egress IPs, so that limit is effectively
+shared among them.
 
-### What is MCP?
+### What data can it reach?
 
-MCP (Model Context Protocol) is a protocol for connecting AI assistants to external data sources. Learn more at [modelcontextprotocol.io](https://modelcontextprotocol.io).
+Layers **owned by** the `soa-dnr` ArcGIS Online org: DNR land status,
+statewide parcels, forestry, state parks, oil & gas, DGGS geology, and the
+layers other state divisions publish through that org, whether hosted on
+ArcGIS Online or on DNR's own servers (`arcgis.dnr.alaska.gov`,
+`geoportal.dggs.dnr.alaska.gov`). About 665 public Feature Services at
+last count.
 
-## Configuration
+### Why does it refuse a layer I can see on gis.data.alaska.gov?
 
-### How do I enable a plugin?
+The Geoportal catalog also lists content from other organizations
+(boroughs, ADF&G, DOT&PF, DEC, USFS, BLM, Census and other federal
+partners). Those layers live in other ArcGIS tenants, and this server only
+proxies the state org's own services. That is the security model (no open
+proxy for arbitrary tenants), not an oversight; see [SECURITY.md](SECURITY.md).
+Each of those orgs is a candidate for its own copy of this server;
+[ALASKA_SOURCES.md](ALASKA_SOURCES.md) lists them with verified ids.
 
-Edit `config.yaml` and set `enabled: true` for ONE plugin:
+### Is the data authoritative / current?
 
-```yaml
-plugins:
-  ckan:
-    enabled: true # Only ONE plugin should be enabled
-```
+It is whatever the publishing division has put on the Geoportal. Every
+response carries the layer's last-edit date and, where relevant, a
+coverage caveat (a layer named for a region or map quad does not cover the
+state). The assistant is instructed to repeat those caveats.
 
-### Can I use environment variables in config.yaml?
+### Can it change anything?
 
-Yes, but they must be resolved before deployment. Terraform will set the final config as a Lambda environment variable.
+No. Every tool is read-only and the server holds no credentials for the
+Geoportal.
 
-### What if I need to change configuration after deployment?
+## Operating it
 
-Edit `config.yaml` and run `./scripts/deploy.sh` again. Terraform will update the Lambda environment variable.
+### One fork, one server?
 
-## Plugins
+Yes. This repo deploys exactly one plugin (`alaska_geoportal`). The
+framework it is built on (OpenContext) enforces that at config validation.
+To serve another org, fork again and change the config; see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
-### What plugins are available?
+### How do I change the model-facing instructions or the searched groups?
 
-Built-in plugins:
+Edit `config-alaska-geoportal.yaml` (`instructions`, `gallery_group_ids`),
+copy it to `config.yaml`, run the tests, deploy. See
+[GETTING_STARTED.md](GETTING_STARTED.md).
 
-- **CKAN** - For CKAN-based portals (data.boston.gov, data.gov, data.gov.uk)
+### How do I deploy?
 
-You can also create custom plugins in `custom_plugins/`.
+`./scripts/deploy.sh -e prod`, which plans and asks before applying. There
+is no staging stack. Details and the first-time custom-domain sequence are
+in [DEPLOYMENT.md](DEPLOYMENT.md); day-2 operations in [RUNBOOK.md](RUNBOOK.md).
 
-### How do I create a custom plugin?
+### Where are the logs?
 
-See [Custom Plugins Guide](CUSTOM_PLUGINS.md) for detailed instructions.
-
-### Can I modify built-in plugins?
-
-No. Built-in plugins are part of the core framework. Create a custom plugin instead.
-
-## Deployment
-
-### What AWS resources are created?
-
-- Lambda function
-- Lambda Function URL
-- IAM role and policies
-- CloudWatch Log Group
+CloudWatch, `/aws/lambda/alaska-geoportal-mcp-prod` (application) and
+`/aws/apigateway/alaska-geoportal-mcp-prod-access` (every request, including
+the ones the WAF or API Gateway rejected before the Lambda ran).
 
 ### How much does it cost?
 
-Typical costs: ~$1/month for 100K requests. See [Deployment Guide](DEPLOYMENT.md) for details.
+A few dollars a month at current traffic, mostly CloudWatch logs.
 
-### Can I deploy to a different cloud provider?
+## Developing
 
-The current implementation is AWS-specific. Contributions for other providers are welcome!
-
-### How do I update an existing deployment?
-
-Run `./scripts/deploy.sh` again. Terraform will update the Lambda function.
-
-## Usage
-
-### How do I connect to it with Claude?
-
-Connect via **Claude Connectors** (same steps on both Claude.ai and Claude Desktop):
-
-1. Go to **Settings** → **Connectors** (or **Customize** → **Connectors** on claude.ai)
-2. Click **Add custom connector**
-3. Enter a name and your API Gateway URL (from `terraform output -raw api_gateway_url`)
-
-Enable the connector in your conversation by clicking "+" → Connectors → toggle it on.
-
-### Can I use it without Claude Desktop?
-
-Yes! Call the Lambda URL directly via HTTP POST with MCP JSON-RPC format.
-
-### How do I test my deployment?
+### How do I run it locally?
 
 ```bash
-curl -X POST https://your-lambda-url \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+uv sync
+cp config-alaska-geoportal.yaml config.yaml
+PYTHONIOENCODING=utf-8 python scripts/local_server.py
+SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py
 ```
 
-## Troubleshooting
+The local server hits the live org; nothing is mocked. See
+[TESTING.md](TESTING.md).
 
-### Deploy script fails: "Multiple Plugins Enabled"
-
-**Solution:** Enable only ONE plugin in `config.yaml`. Disable all others.
-
-### Lambda returns 500 error
-
-**Check:**
-
-1. CloudWatch logs for errors
-2. Configuration is valid
-3. Plugin initialization succeeded
-
-### Claude can't connect
-
-**Check:**
-
-1. API Gateway or Lambda URL is correct (includes `/mcp`)
-2. Connector is added in Settings → Connectors
-3. Connector is enabled for the conversation (click "+" → Connectors → toggle on)
-
-### Plugin initialization fails
-
-**Check:**
-
-1. API URLs are correct
-2. API keys are valid (if required)
-3. Network connectivity from Lambda
-4. CloudWatch logs for specific errors
-
-## Development
-
-### How do I test locally?
-
-**Option 1: Use the local server**
+### How do I run the tests?
 
 ```bash
-# Install aiohttp if needed
-pip install aiohttp
-
-# Start local server
-python3 scripts/local_server.py
-
-# In another terminal, test with curl
-curl -X POST http://localhost:8000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+uv run ruff check core/ plugins/ server/ tests/
+uv run pytest tests/ -n auto --cov=core --cov=plugins --cov-fail-under=80
 ```
 
-**Option 2: Test plugins directly**
+CI runs the same on every push and PR to `main`.
 
-Create a test script that imports and initializes your plugin:
+### Where does the plugin live?
 
-```python
-import asyncio
-from plugins.ckan.plugin import CKANPlugin
+`plugins/alaska_geoportal/plugin.py` (tools, spatial helpers, caveats) and
+`config_schema.py`. The generic `ckan`, `arcgis` and `socrata` plugins from
+the framework are still present but disabled; the shared WHERE-clause
+validator in `plugins/arcgis/where_validator.py` is used by this plugin.
 
-async def test():
-    plugin = CKANPlugin({
-        "base_url": "https://data.boston.gov",
-        "portal_url": "https://data.boston.gov",
-        "city_name": "Boston",
-        "timeout": 120,
-    })
-    await plugin.initialize()
-    tools = plugin.get_tools()
-    print(f"Tools: {[t.name for t in tools]}")
-    await plugin.shutdown()
+### I want to point this at a different ArcGIS Online org.
 
-asyncio.run(test())
-```
-
-**Option 3: Run unit tests**
-
-```bash
-pip install pytest pytest-asyncio
-pytest tests/
-```
-
-### Can I contribute?
-
-Yes! Contributions are welcome. Please open an issue or pull request.
-
-### Where is the code?
-
-[GitHub Repository](https://github.com/thealphacubicle/OpenContext)
+Change `portal_base_url`, `org_id`, `gallery_group_ids`, `gallery_url` and
+`city_name` in the config, and `ONPREM_HOST_SUFFIXES` in the plugin if that
+org publishes from its own ArcGIS Server. The process used to verify the
+values for this org is written up at the bottom of
+[ALASKA_SOURCES.md](ALASKA_SOURCES.md).
 
 ## Support
 
-### Where can I get help?
-
-- [GitHub Issues](https://github.com/thealphacubicle/OpenContext/issues)
-- [Documentation](.)
-- [FAQ](FAQ.md) (this page)
-
-### How do I report a bug?
-
-Open an issue on GitHub with:
-
-- Description of the problem
-- Steps to reproduce
-- Error messages/logs
-- Configuration (redact secrets)
-
-### How do I request a feature?
-
-Open an issue on GitHub with:
-
-- Description of the feature
-- Use case
-- Proposed implementation (if you have one)
+- Issues: <https://github.com/codeforanchorage/alaska-geoportal-mcp/issues>
+- Security reports: see the contact in [SECURITY.md](SECURITY.md)
+- Framework credit: OpenContext by Srihari Raman (City of Boston); the
+  spatial plugin and this fork by Code for Anchorage.

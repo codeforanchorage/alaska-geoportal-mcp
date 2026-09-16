@@ -318,11 +318,12 @@ def __init__(self, config: Dict[str, Any]) -> None:
 ## Reference
 
 - [Plugin Template](../custom_plugins/template/plugin_template.py)
-- [CKAN Plugin](../plugins/ckan/plugin.py) - Example implementation
+- [Alaska Geoportal Plugin](../plugins/alaska_geoportal/plugin.py) - The deployed implementation (large; see its `get_tools` and `execute_tool`)
+- [CKAN Plugin](../plugins/ckan/plugin.py) - A smaller example implementation
 - [Core Interfaces](../core/interfaces.py) - API reference
 
 ## Getting Help
 
 - [FAQ](FAQ.md)
-- [GitHub Issues](https://github.com/thealphacubicle/OpenContext/issues)
+- [GitHub Issues](https://github.com/codeforanchorage/alaska-geoportal-mcp/issues)
 - [Architecture Guide](ARCHITECTURE.md)

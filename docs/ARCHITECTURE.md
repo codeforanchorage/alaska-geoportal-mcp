@@ -27,19 +27,21 @@ server/
 │   └── aws_lambda.py   # Lambda handler entry point
 └── http_handler.py     # HTTP request handling
 
-plugins/                # Built-in (CKAN)
-├── ckan/
+plugins/
+├── alaska_geoportal/   # THE plugin this fork deploys (14 tools)
 │   ├── plugin.py
-│   ├── config_schema.py
-│   └── sql_validator.py
+│   └── config_schema.py
+├── arcgis/             # generic ArcGIS Hub plugin (disabled) + the shared
+│   └── where_validator.py   #   WHERE/out_fields/order_by validators
+├── ckan/               # generic CKAN plugin (disabled)
+└── socrata/            # generic Socrata plugin (disabled)
 
 custom_plugins/         # User plugins (auto-discovered)
 ├── template/
 │   └── plugin_template.py
 
-examples/               # Example configs and plugins
-├── boston-opendata/
-└── custom-plugin/
+terraform/aws/          # Lambda, API Gateway, custom domain, WAF assoc, alarms
+scripts/                # deploy.sh, local_server.py, smoke_*.py
 
 client/                 # Go stdio-to-HTTP client (optional)
 tests/                  # Unit tests
@@ -54,15 +56,34 @@ Lambda / Local Server
     → server.adapters.aws_lambda or scripts/local_server.py
     → MCP Server (core/mcp_server.py)
     → Plugin Manager
-    → Plugin (e.g., CKAN)
-    → External API
+    → Plugin (alaska_geoportal)
+    → ArcGIS Online portal / ArcGIS Server REST APIs
 ```
 
 ## Plugins
 
 Each deployment enables **exactly one** plugin.
 
-### Built-in: CKAN
+### This deployment: Alaska Geoportal
+
+`plugins/alaska_geoportal/` targets one ArcGIS Online organization (the
+State of Alaska Geoportal, `soa-dnr`) and exposes 14 read-only tools:
+catalog discovery (`find_gis_content`, `browse_gallery`,
+`search_spatial_layers`, `search_layers_by_field`), schema
+(`get_item_details`, `get_layer_schema`, `get_distinct_values`), queries
+(`query_data`, `spatial_query_point`, `spatial_query_polygon`) and
+aggregation (`aggregate_by_polygon`, `coverage_by_polygon`,
+`filter_by_polygon`, `find_features_spanning_classifications`). Every
+tool goes through the same choke points: item ownership must match the
+configured `org_id`, and service URLs must be the org's own tenant or an
+allowlisted on-prem host (`*.alaska.gov`). See `CLAUDE.md` for the
+statewide specifics (two spatial references, antimeridian-aware coverage,
+grouped catalog search) and [SECURITY.md](SECURITY.md) for the model.
+
+The framework plugins below remain in the tree for reference and are
+disabled in `config.yaml`.
+
+### Framework reference: CKAN
 
 For CKAN-based open data portals (e.g., data.boston.gov, data.gov, data.gov.uk).
 
@@ -127,8 +148,8 @@ async def health_check() -> bool
 
 **Reference:**
 - [Plugin template](../custom_plugins/template/plugin_template.py)
-- [CKAN plugin](../plugins/ckan/) – Full implementation
-- [Examples](../examples/custom-plugin/) – Custom plugin example
+- [Alaska Geoportal plugin](../plugins/alaska_geoportal/) – the deployed implementation
+- [CKAN plugin](../plugins/ckan/) – a smaller reference implementation
 
 ## Plugin Interface
 
@@ -149,16 +170,22 @@ class MCPPlugin(ABC):
 
 | Endpoint | Auth | Use |
 |----------|------|-----|
-| API Gateway | Rate limit, quota | Production |
-| Lambda Function URL | None | Testing |
+| API Gateway `/mcp` (custom domain `alaska-geoportal.codeforanchorage.org`) | none; stage throttle + fleet WAF | Production |
+| API Gateway `/` | none | Static landing page (MOCK, no Lambda) |
+| Local `scripts/local_server.py` | none | Development; same handler as Lambda |
+
+No Lambda Function URL is created.
 
 ## Configuration
 
-Single `config.yaml`; passed to Lambda via `OPENCONTEXT_CONFIG`. Validated at deploy and runtime.
+Single `config.yaml`, packaged inside the Lambda zip and read from
+`$LAMBDA_TASK_ROOT` (not the `OPENCONTEXT_CONFIG` env var, which is kept
+empty because of Lambda's 4 KB env-var cap). Validated at deploy and
+runtime. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Security & Scalability
 
-- **API Gateway:** Rate limiting (100 burst, 50 sustained/s), configurable daily quota
-- **Lambda URL:** Public—testing only
+- **API Gateway:** stage throttle 5 rps / burst 10; reserved Lambda concurrency 10
+- **WAF:** fleet web ACL, 300 requests per IP per 5 minutes on this host
 - **Stateless:** No shared state; Lambda auto-scales
 - **Logging:** CloudWatch, structured JSON, request IDs

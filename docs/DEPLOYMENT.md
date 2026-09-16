@@ -1,123 +1,148 @@
 # Deployment Guide
 
-Deploy OpenContext to AWS Lambda. See [Getting Started](GETTING_STARTED.md) for the quick path.
+How the Alaska Geoportal MCP server is deployed to AWS. Operations after
+deployment (kill switch, traffic postures, alarms, logs) are in the
+[Runbook](RUNBOOK.md).
+
+## What exists
+
+One stack, in account `420839047325`, region `us-west-2`, Terraform
+workspace `alaska-geoportal-prod`:
+
+| Resource | Name |
+|---|---|
+| Lambda (python3.11, x86_64) | `alaska-geoportal-mcp-prod` |
+| API Gateway REST API + stage | `ae6gj7yvfg`, stage `prod` |
+| Custom domain | `alaska-geoportal.codeforanchorage.org` (ACM cert, regional) |
+| WAF | associated with the fleet web ACL `mcp-fleet-waf` (owned by the mcp-stats repo) |
+| CloudWatch | `/aws/lambda/alaska-geoportal-mcp-prod`, `/aws/apigateway/alaska-geoportal-mcp-prod-access`, alarms → SNS `alaska-geoportal-mcp-prod-alarms` |
+| Terraform state | S3 `alaska-geoportal-opencontext-tfstate`, lock table `terraform-state-lock` (shared across the fleet) |
+
+There is **no staging stack**. The parent repo removed it; `deploy.sh -e
+staging` has no tfvars to run with.
 
 ## Prerequisites
 
-- AWS account, AWS CLI configured
+- AWS CLI configured for the account (an IAM user with Lambda, API Gateway,
+  IAM, CloudWatch, WAF-association, ACM and S3-state permissions)
 - Terraform >= 1.0
-- Python 3.11+
+- Python 3.11+ with `pip` (the packaging step cross-installs wheels for
+  `manylinux2014_x86_64` / CPython 3.11, so any host Python works)
 
-## AWS Permissions
-
-- Lambda (create, update functions)
-- IAM (roles, policies)
-- CloudWatch Logs
-- API Gateway / Lambda Function URLs
-
-## Deployment
+## Deploy
 
 ```bash
-# Configure AWS
-aws configure
-
-# Create config from template (if needed)
-cp config-example.yaml config.yaml
-# Edit config.yaml - enable exactly ONE plugin
-
-# Deploy (validates config, packages, deploys)
-./scripts/deploy.sh
+./scripts/deploy.sh -e prod
 ```
 
-### Manual Terraform
+The script:
 
-First-time: bootstrap the S3 backend (run once). See [terraform/bootstrap/README.md](../terraform/bootstrap/README.md):
+1. Validates `config.yaml` (exactly one plugin enabled, timeouts sane).
+2. Builds the Lambda zip: `core/`, `plugins/`, `server/`, `config.yaml`,
+   and `requirements.txt` dependencies installed for the Lambda platform.
+3. Copies the zip and `config.yaml` into `terraform/aws/`, selects the
+   workspace, runs `terraform plan` with `prod.tfvars`, prints a summary,
+   and waits for an explicit `yes` before `terraform apply`.
+4. Prints `api_gateway_url` and, when the custom domain is bound,
+   `custom_domain_target`.
+
+Afterwards:
 
 ```bash
-cd terraform/bootstrap
-terraform init && terraform apply
+SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp python scripts/smoke_prod.py
 ```
 
-Then deploy:
+## Configuration facts that bite
 
-```bash
-cd terraform/aws
-terraform init
-terraform plan -var="config_file=config.yaml"
-terraform apply
-```
-
-The deploy script copies `config.yaml` into `terraform/aws/` before running Terraform. For manual runs, ensure `config.yaml` exists in the project root or pass the correct path.
-
-## Endpoints
-
-| Endpoint | Use Case | Auth |
-|----------|----------|------|
-| **API Gateway** | Production | Rate limiting, daily quota |
-| **Lambda Function URL** | Testing | None |
-
-### Get URLs
-
-```bash
-cd terraform/aws
-terraform output -raw api_gateway_url   # Production (includes /mcp)
-terraform output -raw lambda_url      # Testing
-```
-
-### API Gateway
-
-- **Rate limit:** 100 burst, 50 sustained req/s (configurable via Terraform variables)
-- **Daily quota:** 1000 requests/day (configurable via `api_quota_limit`)
-- **Stage name:** Default is `staging`; URL format: `https://...execute-api.region.amazonaws.com/staging/mcp`
-- **429** when exceeded
-- Use for production; Lambda URL has no auth
-
-## Configuration
-
-Config is passed via `OPENCONTEXT_CONFIG` env var. Create `config.yaml` from `config-example.yaml`, edit it, and run `./scripts/deploy.sh` to update.
-
-### Lambda Settings (in config.yaml)
+- **`config.yaml` ships inside the zip.** The Lambda reads it from
+  `$LAMBDA_TASK_ROOT`. It is *not* passed through the `OPENCONTEXT_CONFIG`
+  environment variable (Terraform sets that to `""`), because Lambda caps
+  env vars at 4 KB and the `instructions` block alone is larger.
+- **`terraform/aws/config.yaml` is a build artifact.** `deploy.sh`
+  overwrites it every run; it is gitignored. A bare `terraform plan` in
+  `terraform/aws/` without the packaging step reads the stale copy.
+- **`lambda_memory` and `lambda_timeout` come from `config.yaml`**, not
+  from `prod.tfvars` (see `locals` in `main.tf`). `lambda_name` is the
+  other way round.
+- **Timeout ladder:** API Gateway integration 29 s (hard limit) >
+  `lambda_timeout` 28 s > plugin HTTP `timeout` 20 s. Keep that order or a
+  hung upstream turns into an opaque 502 instead of a readable tool error.
 
 ```yaml
 aws:
-  region: "us-east-1"
-  lambda_name: "my-mcp-server"   # Optional; defaults from server_name
-  lambda_memory: 512             # 128–10240 MB
-  lambda_timeout: 120            # 1–900 seconds
+  region: "us-west-2"
+  lambda_name: "alaska-geoportal-mcp-staging"   # prod name comes from prod.tfvars
+  lambda_memory: 1024                           # aggregate_by_polygon holds up to 5000 features
+  lambda_timeout: 28
 ```
 
-## Monitoring
+## Custom domain: first-time order of operations
 
-- **CloudWatch Logs:** `/aws/lambda/<function-name>`, 14-day retention
-- **Tail logs:** `aws logs tail /aws/lambda/my-mcp-server --follow`
+`custom_domain.tf` creates the ACM certificate *and* binds an API Gateway
+domain name to it. API Gateway refuses a certificate that is not yet
+ISSUED, and issuance needs a DNS validation CNAME, so a brand-new stack
+cannot be created in one apply with `custom_domain` set. The order that
+works (done 2026-09-15 for this stack):
 
-## Updating & Cleanup
+1. Deploy with `custom_domain = ""` in the working copy of `prod.tfvars`
+   (don't commit that), then restore the file.
+2. `terraform -chdir=terraform/aws apply -var-file=prod.tfvars
+   -var=config_file=config.yaml -target=aws_acm_certificate.mcp_cert`, then
+   read `acm_validation_cname_name` / `acm_validation_cname_value` from
+   `terraform output` and add that CNAME in DNS.
+3. When `aws acm describe-certificate` reports ISSUED, run the normal
+   `./scripts/deploy.sh -e prod`. It binds the domain and prints
+   `custom_domain_target`; add a CNAME from the hostname to that.
 
-**Update:** Change code/config, run `./scripts/deploy.sh` again.
+DNS for `codeforanchorage.org` is managed by hand (Dreamhost), not by
+Terraform. Existing stacks with an issued certificate deploy in one step.
 
-**Destroy:**
+## Shared-fleet dependencies
+
+- **WAF.** `use_shared_waf = true` in `prod.tfvars`: the stage is associated
+  with the fleet ACL whose ARN is read from SSM. The per-host 300-per-5-min
+  rate rule lives in the **mcp-stats** repo (`fleet_waf_members`, key
+  `alaska-geoportal`) and must be applied there *before* a new host's first
+  deploy, or the host is only covered by the catch-all rule.
+- **Alarms SNS topic.** Created by CLI, outside Terraform; ARN in
+  `prod.tfvars`. Email subscription must be confirmed from the inbox.
+- **State bucket.** Created by CLI (`scripts/setup-backend.sh` or by hand),
+  versioned, AES256, public access blocked. Must match `backend.tf`.
+
+## Routes
+
+| Path | Method | Backed by |
+|---|---|---|
+| `/mcp` | POST (and GET/DELETE/OPTIONS plumbing) | Lambda |
+| `/` | GET | API Gateway MOCK landing page (`landing.tf`), no Lambda |
+| `/mcp-gcc` | POST | only when `enable_gcc_route = true` (off here) |
+
+## Traffic limits (steady state)
+
+| Layer | Value | Where |
+|---|---|---|
+| API Gateway stage throttle | 5 rps, burst 10 | `api_rate_limit`, `api_burst_limit` |
+| Lambda reserved concurrency | 10 | `lambda_reserved_concurrency` |
+| WAF per IP per 5 min | 300 | mcp-stats `fleet_waf_members` |
+| Usage-plan quota (API-key route only) | 3000/day | `api_quota_limit` |
+
+Raising them for an event is a `prod.tfvars` edit plus deploy; see the
+Runbook's traffic postures.
+
+## Cost
+
+At the Anchorage fork's observed traffic the stack runs at a few dollars a
+month, dominated by CloudWatch logs; Lambda and API Gateway are cents. The
+fleet-wide AWS Budget (`mcp-fleet-monthly`, tag `Project=mcp-server`) and
+Cost Anomaly Detection cover this stack automatically via provider default
+tags.
+
+## Destroy
+
 ```bash
-cd terraform/aws
-terraform destroy -var="config_file=config.yaml"
+terraform -chdir=terraform/aws workspace select alaska-geoportal-prod
+terraform -chdir=terraform/aws destroy -var-file=prod.tfvars -var=config_file=config.yaml
 ```
 
-## Cost (us-east-1)
-
-- Lambda: ~$0.20/1M requests, ~$0.0000166667/GB-second
-- Function URL: Free
-- Example: 100K req/month, 512 MB, 1s avg ≈ **$1/month**
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Multiple plugins | Enable only ONE in `config.yaml` |
-| Lambda timeout | Increase `lambda_timeout` |
-| 500 error | Check CloudWatch logs, validate config |
-| High cost | Reduce `lambda_memory`, review usage |
-
-## Security
-
-- Use API Gateway for production (rate limiting, quota)
-- Lambda URL is public—testing only
-- Store secrets in env vars, not code
+Leaves the state bucket, lock table, SNS topic and the mcp-stats WAF entry
+in place; remove those by hand if the server is being retired for good.

@@ -1,136 +1,113 @@
 # Getting Started
 
-Get your OpenContext server running in under 10 minutes.
+Run the Alaska Geoportal MCP server locally, connect a client, and (if you
+operate the production stack) deploy a change. This repo is a single-plugin
+deployment of the OpenContext framework; the framework docs
+([Architecture](ARCHITECTURE.md), [Custom Plugins](CUSTOM_PLUGINS.md)) still
+apply, but the examples here are this server's.
 
-OpenContext uses the Model Context Protocol (MCP), which connects AI assistants to external data. Your server exposes tools that AI assistants can call to search and query your open data.
+## Just want to use it?
 
-## Prerequisites
+You don't need to run anything. The production server is public and
+read-only:
 
-- Python 3.11+
-- Terraform >= 1.0 (for deployment)
-- AWS CLI configured (for deployment)
-
-## Quick Path: Local Testing
-
-Test the server locally before deploying.
-
-### 1. Configure Your Plugin
-
-Create `config.yaml` from the template and enable **exactly one** plugin:
-
-```bash
-cp config-example.yaml config.yaml
+```
+https://alaska-geoportal.codeforanchorage.org/mcp
 ```
 
-Edit `config.yaml`. For CKAN:
+In Claude: **Settings → Connectors → Add custom connector**, paste that URL.
+The `/mcp` path is required. Then enable the connector in a chat and ask,
+for example, "how many miles of forestry road are in the Mat-Su Borough" or
+"which fire service area is Fairbanks in".
 
-```yaml
-plugins:
-  ckan:
-    enabled: true
-    base_url: "https://data.boston.gov"
-    portal_url: "https://data.boston.gov"
-    city_name: "Boston"
-    timeout: 120
-```
+## Prerequisites (for running or deploying)
 
-Each deployment connects to one data source. To connect another source, deploy a separate server. See [Architecture](ARCHITECTURE.md) for details.
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/) (pip works too)
+- For deployment only: Terraform >= 1.0, AWS CLI with access to account
+  `420839047325`, and permission to run `./scripts/deploy.sh`
 
-### 2. Start the Local Server
+## Run it locally
 
 ```bash
-pip install aiohttp
-python3 scripts/local_server.py
+git clone https://github.com/codeforanchorage/alaska-geoportal-mcp.git
+cd alaska-geoportal-mcp
+uv sync                                        # or: pip install -r requirements.txt -r requirements-dev.txt
+cp config-alaska-geoportal.yaml config.yaml    # the deployable config; already verified
+PYTHONIOENCODING=utf-8 python scripts/local_server.py
 ```
 
-The server runs at `http://localhost:8000/mcp`. Keep this terminal open.
+The server listens at `http://localhost:8000/mcp` and talks to the live
+`soa-dnr` ArcGIS Online org (read-only). It enforces the same Origin
+allowlist and protocol-version checks as production, so local behaviour is
+representative.
 
-### 3. Connect via Claude Connectors
-
-Connect using **Claude Connectors** (same steps on both Claude.ai and Claude Desktop):
-
-1. Go to **Settings** → **Connectors** (or **Customize** → **Connectors** on claude.ai)
-2. Click **Add custom connector**
-3. Enter a name (e.g. "OpenContext Local") and URL: `http://localhost:8000/mcp`
-
-**Note:** Local servers (`localhost`) only work with Claude Desktop, since the connection runs from your machine. For Claude.ai (web), use the MCP Inspector or deploy to production first (see below).
-
-### 4. Verify
+### Check it
 
 ```bash
+# 20 end-to-end checks against the live org
+SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py
+
+# or a single call
 curl -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"alaska_geoportal__find_gis_content","arguments":{"topic":"wildfire","limit":5}}}'
 ```
 
-You can also test with Claude by asking it to search your data, or use [Testing](TESTING.md) for more options (MCP Inspector, full test script).
+### Connect a client to the local server
 
----
+- **Claude Desktop / Claude Code:** `stdio_bridge.py` bridges stdio to the
+  local HTTP server, or build the Go client in `client/` (`make build`).
+- **MCP Inspector:** `npx @modelcontextprotocol/inspector`, transport
+  *streamable-http*, URL `http://localhost:8000/mcp`.
+- **claude.ai (web)** cannot reach `localhost`; use the production URL.
 
-## Production Deployment
+See [Testing](TESTING.md) for more.
 
-### 1. Fork & Configure
+## Change the configuration
 
-1. Fork the [OpenContext repository](https://github.com/thealphacubicle/OpenContext)
-2. Clone your fork
-3. Create config: `cp config-example.yaml config.yaml`
-4. Edit `config.yaml` with **exactly one** plugin enabled
+`config-alaska-geoportal.yaml` is the source of truth; `config.yaml` is the
+copy that `scripts/local_server.py` reads and that `deploy.sh` bundles into
+the Lambda package. Edit the former, then `cp` it over the latter. The
+`instructions` block is what the model sees at `initialize`; the
+`gallery_group_ids` list is which Geoportal groups are searched. Verified
+org and group ids, and why only state-owned groups are listed, are in
+[ALASKA_SOURCES.md](ALASKA_SOURCES.md).
 
-### 2. Deploy to AWS
+Validate before deploying:
 
 ```bash
-./scripts/deploy.sh
+python -c "from core.validators import load_and_validate_config; load_and_validate_config('config.yaml')"
 ```
 
-The script validates config, packages code, and deploys to AWS Lambda. You'll receive:
-- **Lambda Function URL** – for testing (no auth)
-- **API Gateway URL** – for production (API key, rate limiting)
-
-AWS creates: Lambda function, Function URL, API Gateway, IAM role, CloudWatch Log Group. Cost is roughly $1/month for 100K requests. See [Deployment](DEPLOYMENT.md) for details.
-
-### 3. Connect via Claude Connectors (Production)
-
-Connect using **Claude Connectors** (same steps on both Claude.ai and Claude Desktop):
-
-1. Go to **Settings** → **Connectors** (or **Customize** → **Connectors** on claude.ai)
-2. Click **Add custom connector**
-3. Enter a name (e.g. "Boston OpenData") and your API Gateway URL
-
-Get the URL:
+## Deploy a change
 
 ```bash
-cd terraform/aws
-terraform output -raw api_gateway_url
+uv run ruff check core/ plugins/ server/ tests/
+uv run pytest tests/ -n auto --cov=core --cov=plugins --cov-fail-under=80
+./scripts/deploy.sh -e prod          # plans, shows a summary, waits for "yes"
+SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp python scripts/smoke_prod.py
 ```
 
-The output already includes `/mcp`. Use this URL for production (rate limiting, API key). For testing without auth, use the Lambda URL from `terraform output -raw lambda_url` instead.
-
-### 4. Updating
-
-To update config or code: edit `config.yaml` or your code, then run `./scripts/deploy.sh` again.
-
----
+There is no staging environment in this fork; prod is the only stack. The
+script packages the code and `config.yaml`, runs Terraform in workspace
+`alaska-geoportal-prod`, and prints the API Gateway URL. Details, the
+timeout ladder, and the custom-domain caveat are in
+[Deployment](DEPLOYMENT.md); day-2 operations (kill switch, traffic
+postures, alarms, logs) are in the [Runbook](RUNBOOK.md).
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| `ModuleNotFoundError: aiohttp` | `pip install aiohttp` |
-| "Multiple Plugins Enabled" | Enable only one plugin in `config.yaml` |
-| Claude can't connect | Verify URL includes `/mcp`, check connector is enabled in the chat |
-| Lambda 500 error | Check CloudWatch logs, validate config |
-| Plugin init fails | Check API URLs, keys, and network connectivity |
+| Claude "can't connect" | The saved URL must end in `/mcp`. The bare hostname serves a landing page that says so. |
+| `Multiple Plugins Enabled` at startup | Only `alaska_geoportal` may be `enabled: true` in `config.yaml`. |
+| A layer is refused: "belongs to org … not the configured org" | It's a partner-org layer (borough, ADF&G, DOT&PF, federal). By design; see [SECURITY.md](SECURITY.md) and [ALASKA_SOURCES.md](ALASKA_SOURCES.md). |
+| `Unable to complete operation` on a WHERE clause | Usually a numeric comparison on a String-typed field. The error now tells you which field and gives the guarded `CAST` form. |
+| Lambda 5xx | `aws logs tail /aws/lambda/alaska-geoportal-mcp-prod --since 30m`; see the Runbook. |
 
----
+## Next
 
-## Next Steps
-
-- [Architecture](ARCHITECTURE.md) – System design, built-in plugins, custom plugins
-- [Deployment](DEPLOYMENT.md) – AWS details, monitoring, cost
-- [Testing](TESTING.md) – Local testing (Terminal, Claude, MCP Inspector)
-
----
-
-## Support
-
-[GitHub Issues](https://github.com/thealphacubicle/OpenContext/issues)
+- [Architecture](ARCHITECTURE.md) – framework design, plugin interface
+- [Alaska sources](ALASKA_SOURCES.md) – the state org, its groups, other Alaska orgs
+- [Security](SECURITY.md) – tenant scoping, host allowlist
+- [Runbook](RUNBOOK.md) – operations
