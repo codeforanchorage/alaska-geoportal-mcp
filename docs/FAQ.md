@@ -26,22 +26,27 @@ shared among them.
 
 ### What data can it reach?
 
-Layers **owned by** the `soa-dnr` ArcGIS Online org: DNR land status,
-statewide parcels, forestry, state parks, oil & gas, DGGS geology, and the
-layers other state divisions publish through that org, whether hosted on
-ArcGIS Online or on DNR's own servers (`arcgis.dnr.alaska.gov`,
-`geoportal.dggs.dnr.alaska.gov`). About 665 public Feature Services at
-last count.
+Layers owned by the `soa-dnr` ArcGIS Online org (DNR land status,
+statewide parcels, forestry, state parks, oil & gas, DGGS geology; about
+665 public Feature Services) plus the layers of 13 Alaska partner
+organizations that publish into the Geoportal: the Municipality of
+Anchorage, the Mat-Su, Kenai Peninsula, Fairbanks North Star, Kodiak
+Island and Haines boroughs, the City of Unalaska, ADF&G, DEC, DCRA,
+DOT&PF, the Alaska Energy Authority and UAA's Alaska Center for
+Conservation Science, whether hosted on ArcGIS Online or on their own
+servers. Search results label partner layers with the agency name.
 
 ### Why does it refuse a layer I can see on gis.data.alaska.gov?
 
-The Geoportal catalog also lists content from other organizations
-(boroughs, ADF&G, DOT&PF, DEC, USFS, BLM, Census and other federal
-partners). Those layers live in other ArcGIS tenants, and this server only
-proxies the state org's own services. That is the security model (no open
-proxy for arbitrary tenants), not an oversight; see [SECURITY.md](SECURITY.md).
-Each of those orgs is a candidate for its own copy of this server;
-[ALASKA_SOURCES.md](ALASKA_SOURCES.md) lists them with verified ids.
+Two possibilities. If it belongs to a **federal** partner (Census, USGS,
+NOAA, USFS, BLM, FEMA and others), that is by design: those layers live in
+federal ArcGIS tenants and this server only proxies the State of Alaska
+org and its configured Alaska partner organizations (no open proxy for
+arbitrary tenants); see [SECURITY.md](SECURITY.md). If it belongs to an
+Alaska borough or state agency that is *not* yet in `partner_orgs`, or its
+items carry no organization id (the Alaska Railroad's do), it can be
+added or investigated; [ALASKA_SOURCES.md](ALASKA_SOURCES.md) lists every
+org in the catalog with its status.
 
 ### Is the data authoritative / current?
 

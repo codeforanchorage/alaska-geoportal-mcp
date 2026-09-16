@@ -22,6 +22,10 @@ plugins:
       - "a5055ea72899425c8cc4e01b32658a45"
       - "18028130a7a14132bd922bcd830f27c6"
       # ... see config-alaska-geoportal.yaml for the verified full list
+    partner_orgs:                     # Alaska orgs also allowed (never federal)
+      - org_id: "fX5IGselyy1TirdY"
+        name: "Matanuska-Susitna Borough"
+        hosts: ["maps.matsugov.us"]   # optional on-prem servers, exact match
     city_name: "State of Alaska"
     gallery_url: "https://gis.data.alaska.gov/search"
     timeout: 20                       # must stay below aws.lambda_timeout
@@ -33,10 +37,14 @@ included, are in [ALASKA_SOURCES.md](ALASKA_SOURCES.md).
 
 ### Behaviour worth knowing
 
-- Only items owned by `org_id` are queryable; partner-org layers in the
-  catalog are listed by search but refused on query ([SECURITY.md](SECURITY.md)).
-- Service URLs must be on the org's own ArcGIS Online tenant or on
-  `*.alaska.gov` (DNR / DGGS ArcGIS Servers).
+- Items owned by `org_id` or by any `partner_orgs` entry are queryable;
+  federal-partner layers in the catalog are listed by search but refused
+  on query ([SECURITY.md](SECURITY.md)).
+- Service URLs must be on an allowed org's ArcGIS Online tenant, on
+  `*.alaska.gov` (DNR / DGGS / DEC / DCRA / ADF&G servers), or on a
+  partner's declared `hosts`.
+- Search results carry the publishing agency in brackets for partner
+  layers.
 - Web Mercator `Shape__Area` is corrected per feature by `cos²(lat)`;
   EPSG:3338 areas pass through as true square metres.
 - Every query response carries data-freshness and coverage caveats; the

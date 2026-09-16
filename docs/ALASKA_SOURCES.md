@@ -31,8 +31,41 @@ The Hub site's `catalogV2` scope lists **45 groups**. Only the ones owned by
 | `705db769b7624af18a0367d58225aed4` | Alaska Geoportal Content (apps, story maps) | 4 |
 | `b5dceabe78cd45108f098e11d6f9738e` | Alaska Division of Oil and Gas Open Data Content | 1 |
 
+### Alaska partner orgs (configured 2026-09-16)
+
+Each is a `partner_orgs` entry in `config-alaska-geoportal.yaml`, which
+admits its items to the ownership check and its tenant (plus any listed
+on-prem hosts) to the service-URL allowlist, and its groups are added to
+`gallery_group_ids`. Counts are public Feature/Map Services in the
+catalogued group(s); hosts were read from those items' service URLs.
+
+| Org | `org_id` | On-prem hosts admitted | Group(s) | Services |
+|---|---|---|---|---|
+| Municipality of Anchorage | `Ce3DhLRthdwbHlfF` | `www.ancgis.com` | `805318360e5046cb9d7b252ee0c3105b`, `c34ed10758ec4f4eb8aa6826ee5be3ff` (apps) | 76 |
+| Matanuska-Susitna Borough | `fX5IGselyy1TirdY` | `maps.matsugov.us` | `2277e4402d15474eb22ad64b410292b5`, `7ae0e98a30e840d28cea2e97fb86d15d` (apps) | 60 |
+| Kenai Peninsula Borough | `ba4DH9pIcqkXJVfl` | -- | `9f50b42277a94f369002f2e7db25384b` | 39 (3 point at other tenants and stay refused) |
+| Fairbanks North Star Borough | `f4rR7WnIfGBdVYFd` | `gisportal.fnsb.gov` | `9b70d86fb59848e99ba979e4fb68b577` | 39 |
+| Kodiak Island Borough | `R5BNizttyFKxRSMm` | -- (`gistest.kodiakak.us` is a test host, not admitted) | `593bb33b063f4327b2d3beea351d0fe8` | 26 |
+| City of Unalaska | `XYRnCwZ037YZHYH0` | -- | `cceaf377149d4657871e224c25cf756d` | 6 |
+| Haines Borough | `pMlUMMROURtJLUZt` | -- | `27f53ccba1dc49f0a8605dac3290d66c` (apps only) | 0 |
+| ADF&G | `VdkVOAHovLuozJG4` | `gis.adfg.alaska.gov` (already `*.alaska.gov`) | `503809f0fdf7478eb2cba0015179e226` | 27 |
+| DEC | `8MMg7skvEbOESlSM` | `dec.alaska.gov` (already `*.alaska.gov`) | `a3ff58da1bf04e209e44a1f50efab18c` | 39 |
+| DCRA | `0DjevcWawQ1dy3il` | `maps.commerce.alaska.gov` (already `*.alaska.gov`) | `37ac60c091744e80a379c33c80fbf64d`, `031b68d1f04943d6969a3f764b98377e` | 136 |
+| DOT&PF | `r4A0V7UzH9fcLVvv` | -- | `d02c85d843ee4231850b68e7359f316f` | 61 |
+| Alaska Energy Authority | `aJhsucjqSbYNmsuZ` | -- | `e2dffb4a9f834e4e968e8ffb5be3a822` | 7 |
+| UAA Alaska Center for Conservation Science | `DlE4MSUhoXlyq64t` | -- | `0c27db95e5754212b0ecc1ea3b3b6cb7` | 6 |
+
 Deliberately **not** configured:
 
+- **Alaska Railroad (ARRC)** group `9c08399657674ee8af2bd48f6227a94c`: its
+  five Feature Services (on `geo.akrr.com`) carry no `orgId` in either the
+  search or the item record, so the fail-closed ownership check cannot
+  admit them without a per-owner exception. Revisit if ARRC data is asked for.
+- **Southeast Alaska GIS Library** groups (`dc223b8c…`, `3bd5a02c…`, org
+  `GuxCnhbHpvpWeAM1`): the items point at the USFS Alaska Region tenant
+  (`services1.arcgis.com/gGHDlz6USftL5Pau`) and `apps.fs.usda.gov`, i.e.
+  federal data, so they fall under the federal exclusion.
+- **Non-government groups** (Alaska Food Policy Council, "Public Map").
 - **Federal partner groups** (`Alaska Geoportal Federal Partner - USGS / DOT /
   FEMA / NPS / BOEM / HUD / NOAA / USFS / USACE / DOD / US Census Bureau / GSA /
   BLM / USFWS`). These are owned by `soa-dnr` and their items are owned by the
@@ -42,11 +75,9 @@ Deliberately **not** configured:
   the layers would be discoverable but not queryable. Adding them needs a
   deliberate change to the tenant-scoping model documented in
   [SECURITY.md](SECURITY.md).
-- **Partner-org groups** (Mat-Su, Kenai Peninsula, Kodiak, Unalaska, Haines,
-  FNSB, ADF&G, DEC, DOT&PF, DCRA, AEA, ACCS, ARRC, USFS Alaska Region,
-  Tongass, SEAKGIS, FWS, BLM, Anchorage's two groups). Their items carry a
-  different `orgId` and are refused by `_assert_owned_by_configured_org`.
-  They belong in their own forks (below).
+- **Federal-org groups** (USFS Alaska Region, Tongass, FWS, BLM Hub AK).
+  Their items carry federal `orgId`s and are refused by
+  `_assert_owned_by_configured_org`.
 
 ### Layers used by the smoke scripts
 
@@ -64,10 +95,12 @@ Note the mix of spatial references: hosted layers are NOT uniformly Web
 Mercator here. `_true_area_m2` corrects 3857 per feature and passes 3338
 through as true square metres.
 
-## Candidate orgs for sibling forks
+## The same orgs as candidates for sibling forks
 
-All of these appear as partner groups in the Geoportal catalog, which is how
-the org ids below were obtained (group `orgId`, checked 2026-09-15). The Hub
+The partner orgs above are served *through* this server, scoped to what
+they share into the Geoportal catalog. An org's full catalog (everything
+it publishes, not only the Geoportal groups) would need its own fork with
+its own `org_id`, and the ids below are what that fork would use. The Hub
 URLs and "what they publish" are from the group titles and the Hub sites
 themselves; FS counts are public Feature Services **in the catalogued group**,
 not in the whole org.

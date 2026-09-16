@@ -90,11 +90,19 @@ instructions: |
   lon=..., lat=...) with WGS84 decimal degrees, lon FIRST (Alaska
   longitudes are negative, e.g. Fairbanks is lon=-147.72, lat=64.84).
 
-  Scope: this server proxies only layers OWNED by the State of Alaska
-  org. Borough, ADF&G, DOT&PF, DEC and federal partner layers that appear
-  in the Geoportal catalog under their own organizations are not
-  queryable here and are rejected with a clear error -- say so and name
-  the publishing agency rather than retrying.
+  Scope: this server proxies layers owned by the State of Alaska org AND
+  by the Alaska partner organizations that publish into the Geoportal:
+  the Municipality of Anchorage, Mat-Su, Kenai Peninsula, Fairbanks North
+  Star, Kodiak Island and Haines boroughs, the City of Unalaska, ADF&G,
+  DEC, DCRA, DOT&PF, the Alaska Energy Authority and UAA's Alaska Center
+  for Conservation Science. Search results label a partner's layers with
+  its name in brackets; unlabelled results are the state org's. FEDERAL
+  partner layers (Census, USGS, NOAA, USFS, BLM, FEMA ...) also appear in
+  the catalog but are NOT queryable here and are rejected with a clear
+  error -- say so and name the agency rather than retrying. The same
+  layer may exist from two publishers (e.g. borough parcels vs the
+  statewide parcels layer); prefer the publisher whose scope matches the
+  question and say which one you used.
 
   All tools are READ-ONLY and safe to call without confirmation.
 
@@ -106,20 +114,74 @@ plugins:
     portal_base_url: "https://soa-dnr.maps.arcgis.com/sharing/rest"
     org_id: "7HDiw78fcUiM2BWn"
     # The Geoportal Hub site (item 7dd7c86dd0cc40f6a516eb77001977c1,
-    # https://gis.data.alaska.gov) catalogs 45 groups. Only the groups
-    # OWNED by the soa-dnr org are listed here; the other 30-odd belong
-    # to partner orgs (boroughs, ADF&G, DOT&PF, DEC, USFS, BLM ...) whose
-    # items this server cannot proxy (see _assert_owned_by_configured_org
-    # and _validate_service_url). The federal-partner groups are also
-    # soa-dnr-owned but point at federal tenants' services, so they are
-    # left out too. See docs/ALASKA_SOURCES.md.
+    # https://gis.data.alaska.gov) catalogs 45 groups. Listed here: the
+    # groups owned by the soa-dnr org, plus the groups of each Alaska
+    # partner org in `partner_orgs` below. NOT listed: the soa-dnr-owned
+    # "Federal Partner" groups (their items point at federal tenants'
+    # services and would be refused), SEAKGIS (its items live in the USFS
+    # tenant), ARRC (its items carry no orgId, so the fail-closed
+    # ownership check cannot admit them), and non-government groups. See
+    # docs/ALASKA_SOURCES.md for the probe behind each line.
     gallery_group_ids:
+      # State of Alaska (soa-dnr)
       - "a5055ea72899425c8cc4e01b32658a45" # Alaska DNR Open Data Content (109 FS)
       - "18028130a7a14132bd922bcd830f27c6" # AK DNR: Open Data Services (62 FS)
       - "112a233ad29c46ae861fdeb0475aff8b" # DGGS Geoportal Collaboration v2 (20 FS)
       - "e09f40dee931443485e5f36b55d7dd09" # DOG OpenData (15 FS)
       - "705db769b7624af18a0367d58225aed4" # Alaska Geoportal Content (apps + 4 FS)
       - "b5dceabe78cd45108f098e11d6f9738e" # Division of Oil and Gas Open Data Content
+      # Alaska partner orgs (see partner_orgs)
+      - "805318360e5046cb9d7b252ee0c3105b" # MOA Hosted Open Data Group (75 FS)
+      - "c34ed10758ec4f4eb8aa6826ee5be3ff" # MOA All Map Applications (apps)
+      - "2277e4402d15474eb22ad64b410292b5" # Matanuska-Susitna Borough Open Data (60 FS)
+      - "7ae0e98a30e840d28cea2e97fb86d15d" # MSB Featured Maps (apps)
+      - "9f50b42277a94f369002f2e7db25384b" # KPB GeoHub Content (39 FS)
+      - "9b70d86fb59848e99ba979e4fb68b577" # FNSB GIS Data Content (25 FS)
+      - "593bb33b063f4327b2d3beea351d0fe8" # Kodiak Island Borough Open Data (26 FS)
+      - "cceaf377149d4657871e224c25cf756d" # City of Unalaska Open Data (5 FS)
+      - "27f53ccba1dc49f0a8605dac3290d66c" # Haines Borough Map Gallery (apps)
+      - "503809f0fdf7478eb2cba0015179e226" # ADF&G Open Data (27 FS)
+      - "a3ff58da1bf04e209e44a1f50efab18c" # ADEC Open Data Layers (20 FS)
+      - "37ac60c091744e80a379c33c80fbf64d" # Open Data DCRA-SOA (128 FS)
+      - "031b68d1f04943d6969a3f764b98377e" # Southeast Alaska GIS Library (DCRA-owned group)
+      - "d02c85d843ee4231850b68e7359f316f" # Alaska DOT Open Data Content (61 FS)
+      - "e2dffb4a9f834e4e968e8ffb5be3a822" # Alaska Energy Authority Open Data (7 FS)
+      - "0c27db95e5754212b0ecc1ea3b3b6cb7" # ACCS Open Data (6 FS)
+    # Alaska partner organizations whose items and services this server may
+    # proxy in addition to the state org. Each entry widens the tenant
+    # allowlist by exactly that org id (and any listed on-prem hosts).
+    # Federal tenants are deliberately absent. Verified 2026-09-16 by
+    # probing each group's items (docs/ALASKA_SOURCES.md).
+    partner_orgs:
+      - org_id: "Ce3DhLRthdwbHlfF"
+        name: "Municipality of Anchorage"
+        hosts: ["www.ancgis.com"]
+      - org_id: "fX5IGselyy1TirdY"
+        name: "Matanuska-Susitna Borough"
+        hosts: ["maps.matsugov.us"]
+      - org_id: "ba4DH9pIcqkXJVfl"
+        name: "Kenai Peninsula Borough"
+      - org_id: "f4rR7WnIfGBdVYFd"
+        name: "Fairbanks North Star Borough"
+        hosts: ["gisportal.fnsb.gov"]
+      - org_id: "R5BNizttyFKxRSMm"
+        name: "Kodiak Island Borough"
+      - org_id: "XYRnCwZ037YZHYH0"
+        name: "City of Unalaska"
+      - org_id: "pMlUMMROURtJLUZt"
+        name: "Haines Borough"
+      - org_id: "VdkVOAHovLuozJG4"
+        name: "Alaska Department of Fish and Game"
+      - org_id: "8MMg7skvEbOESlSM"
+        name: "Alaska Department of Environmental Conservation"
+      - org_id: "0DjevcWawQ1dy3il"
+        name: "Alaska DCRA (Commerce, Community and Economic Development)"
+      - org_id: "r4A0V7UzH9fcLVvv"
+        name: "Alaska DOT&PF"
+      - org_id: "aJhsucjqSbYNmsuZ"
+        name: "Alaska Energy Authority"
+      - org_id: "DlE4MSUhoXlyq64t"
+        name: "Alaska Center for Conservation Science (UAA)"
     city_name: "State of Alaska"
     gallery_url: "https://gis.data.alaska.gov/search"
     # Per-upstream-request HTTP timeout. MUST stay below lambda_timeout

@@ -63,6 +63,13 @@ plugins:
     gallery_group_ids:
       - "a5055ea72899425c8cc4e01b32658a45"
       - "18028130a7a14132bd922bcd830f27c6"
+    # Other ArcGIS Online orgs whose items/services may be proxied. Each
+    # entry widens the tenant allowlist by one org id (+ optional on-prem
+    # hostnames). List Alaska partner agencies here, never federal tenants.
+    partner_orgs:
+      - org_id: "fX5IGselyy1TirdY"
+        name: "Matanuska-Susitna Borough"
+        hosts: ["maps.matsugov.us"]
     city_name: "State of Alaska"
     gallery_url: "https://gis.data.alaska.gov/search"
     timeout: 20 # Must stay below aws.lambda_timeout

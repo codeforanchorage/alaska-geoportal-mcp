@@ -25,6 +25,13 @@ def geoportal_config():
             "18028130a7a14132bd922bcd830f27c6",
         ],
         "org_id": "7HDiw78fcUiM2BWn",
+        "partner_orgs": [
+            {
+                "org_id": "fX5IGselyy1TirdY",
+                "name": "Matanuska-Susitna Borough",
+                "hosts": ["maps.matsugov.us"],
+            },
+        ],
         "city_name": "State of Alaska",
         "gallery_url": "https://gis.data.alaska.gov/search",
         "timeout": 30,
@@ -2042,6 +2049,28 @@ class TestItemOwnership:
             )
 
     @pytest.mark.asyncio
+    async def test_accepts_item_owned_by_partner_org(self, plugin):
+        plugin.client = self._make_client({
+            "id": "abc12345abc12345abc12345abc12345",
+            "orgId": "fX5IGselyy1TirdY",
+            "title": "MSB Easements",
+            "type": "Feature Service",
+        })
+        item = await plugin.get_dataset("abc12345abc12345abc12345abc12345")
+        assert item["title"] == "MSB Easements"
+
+    @pytest.mark.asyncio
+    async def test_rejects_federal_tenant_names_the_reason(self, plugin):
+        plugin.client = self._make_client({
+            "id": "abc12345abc12345abc12345abc12345",
+            "orgId": "FiaPA4ga0iQKduv3",  # Census
+            "title": "TIGERweb Counties",
+            "type": "Feature Service",
+        })
+        with pytest.raises(ValueError, match="Alaska partner"):
+            await plugin.get_dataset("abc12345abc12345abc12345abc12345")
+
+    @pytest.mark.asyncio
     async def test_orgid_match_is_case_insensitive(self, plugin):
         plugin.client = self._make_client({
             "id": "abc12345abc12345abc12345abc12345",
@@ -2083,6 +2112,30 @@ class TestSearchOrgLayersFilter:
             results = await plugin._search_org_layers("any", ["Feature Service"], 10)
         titles = [r["title"] for r in results]
         assert titles == ["ours"]
+
+    @pytest.mark.asyncio
+    async def test_query_ors_state_and_partner_orgs(self, plugin):
+        with patch.object(
+            plugin, "_run_search", new_callable=AsyncMock, return_value=[]
+        ) as rs:
+            await plugin._search_org_layers("roads", ["Feature Service"], 5)
+        q = rs.await_args.args[0]
+        assert q.startswith("(orgid:7HDiw78fcUiM2BWn OR orgid:fX5IGselyy1TirdY)")
+        assert q.endswith(" AND roads")
+
+    @pytest.mark.asyncio
+    async def test_keeps_partner_org_results(self, plugin):
+        with patch.object(
+            plugin,
+            "_run_search",
+            new_callable=AsyncMock,
+            return_value=[
+                {"id": "1" * 32, "orgId": "fX5IGselyy1TirdY", "title": "matsu"},
+                {"id": "2" * 32, "orgId": _OTHER_ORG, "title": "theirs"},
+            ],
+        ):
+            results = await plugin._search_org_layers("any", ["Feature Service"], 10)
+        assert [r["title"] for r in results] == ["matsu"]
 
     @pytest.mark.asyncio
     async def test_keeps_items_with_missing_orgid(self, plugin):
@@ -2192,6 +2245,30 @@ class TestValidateServiceUrl:
             "X/FeatureServer/0"
         )
 
+    def test_allows_partner_tenant_path(self, plugin):
+        plugin._validate_service_url(
+            "https://services.arcgis.com/fX5IGselyy1TirdY/arcgis/rest/services/X/FeatureServer/0"
+        )
+
+    def test_allows_partner_onprem_host_exact(self, plugin):
+        plugin._validate_service_url(
+            "https://maps.matsugov.us/map/rest/services/OpenData/X/FeatureServer/0"
+        )
+        with pytest.raises(ValueError, match="not on the allowlist"):
+            plugin._validate_service_url(
+                "https://evil.maps.matsugov.us/map/rest/services/X/FeatureServer/0"
+            )
+        with pytest.raises(ValueError, match="not on the allowlist"):
+            plugin._validate_service_url(
+                "https://maps.matsugov.us.evil.com/x"
+            )
+
+    def test_rejects_federal_tenant_path(self, plugin):
+        with pytest.raises(ValueError, match="federal partner layers"):
+            plugin._validate_service_url(
+                "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/AIANNHA_v1/FeatureServer"
+            )
+
     def test_rejects_lookalike_alaska_gov_host(self, plugin):
         with pytest.raises(ValueError, match="not on the allowlist"):
             plugin._validate_service_url(
@@ -2279,6 +2356,30 @@ class TestEnsureLayerUrl:
 
 
 class TestFormatters:
+    def test_format_summary_labels_partner_agency(self, geoportal_config):
+        plugin = AlaskaGeoportalPlugin(geoportal_config)
+        plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
+        by_org = plugin._format_summary({
+            "id": "a" * 32, "title": "Easements", "type": "Feature Service",
+            "orgId": "fX5IGselyy1TirdY", "url": "https://x",
+        })
+        assert "[Matanuska-Susitna Borough]" in by_org
+        by_url = plugin._format_summary({
+            "id": "b" * 32, "title": "Parcels", "type": "Feature Service",
+            "url": "https://services.arcgis.com/fX5IGselyy1TirdY/arcgis/rest/services/P/FeatureServer",
+        })
+        assert "[Matanuska-Susitna Borough]" in by_url
+        by_host = plugin._format_summary({
+            "id": "c" * 32, "title": "ROW", "type": "Feature Service",
+            "url": "https://maps.matsugov.us/map/rest/services/OpenData/ROW/FeatureServer",
+        })
+        assert "[Matanuska-Susitna Borough]" in by_host
+        state = plugin._format_summary({
+            "id": "d" * 32, "title": "Parcels", "type": "Feature Service",
+            "orgId": "7HDiw78fcUiM2BWn", "url": "https://x",
+        })
+        assert "[" not in state.split("\n")[0]
+
     def test_format_summary(self, geoportal_config):
         plugin = AlaskaGeoportalPlugin(geoportal_config)
         plugin.plugin_config = AlaskaGeoportalPluginConfig(**geoportal_config)
@@ -4028,6 +4129,22 @@ class TestConfigSchema:
             **self._base(gallery_group_ids=[self.GID, self.GID2, self.GID.upper()])
         )
         assert config.gallery_group_ids == [self.GID, self.GID2]
+
+    def test_partner_orgs_default_empty_and_validated(self):
+        assert AlaskaGeoportalPluginConfig(**self._base()).partner_orgs == []
+        cfg = AlaskaGeoportalPluginConfig(**self._base(partner_orgs=[
+            {"org_id": "fX5IGselyy1TirdY", "name": "Mat-Su", "hosts": ["Maps.MatSuGov.us"]},
+        ]))
+        assert cfg.partner_orgs[0].hosts == ["maps.matsugov.us"]
+        for bad in (
+            [{"org_id": "fX5IGselyy1TirdY", "name": "x", "hosts": ["*.matsugov.us"]}],
+            [{"org_id": "fX5IGselyy1TirdY", "name": "x", "hosts": ["https://maps.matsugov.us"]}],
+            [{"org_id": "fX5IGselyy1TirdY", "name": "x", "extra": 1}],
+            [{"org_id": "fX5IGselyy1TirdY", "name": "a"}, {"org_id": "FX5IGSELYY1TIRDY", "name": "b"}],
+            [{"org_id": "short", "name": "x"}],
+        ):
+            with pytest.raises(ValidationError):
+                AlaskaGeoportalPluginConfig(**self._base(partner_orgs=bad))
 
     def test_config_schema_rejects_empty_group_list(self):
         with pytest.raises(ValidationError):

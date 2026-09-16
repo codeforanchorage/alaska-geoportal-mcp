@@ -82,14 +82,23 @@ surface, and must stay in sync:
   - `_search_gallery` is intentionally *not* org-filtered — the
     gallery is scoped by the configured `gallery_group_ids` and may
     list cross-org items. Any drill-down still goes through
-    `get_dataset` and is rejected if not owned by the state org.
-  - **Statewide consequence:** the Geoportal Hub catalog spans 45
-    groups, ~30 of them owned by partner orgs (boroughs, ADF&G, DOT&PF,
-    DEC, USFS, BLM ...), and the state-owned "Federal Partner" groups
-    point at federal tenants' services. Those layers are refused here
-    by design. Widening the allowlist to partner tenants is a scope
-    decision, not a bug fix -- see `docs/ALASKA_SOURCES.md` for the
-    per-org fork alternative.
+    `get_dataset` and is rejected if not owned by an allowed org.
+  - **Allowed orgs = the state org + `partner_orgs`.** Since 2026-09-16
+    the config lists 13 Alaska partner organizations (boroughs, ADF&G,
+    DEC, DCRA, DOT&PF, AEA, UAA ACCS, Anchorage). Each entry widens the
+    allowlist by exactly one org id, and optionally by exact on-prem
+    hostnames (`maps.matsugov.us`, `gisportal.fnsb.gov`,
+    `www.ancgis.com`). The ownership check and the service-URL check
+    both consult the same set, so a partner's items can be queried
+    from its own ArcGIS Online tenant or its own server.
+  - **Federal tenants are deliberately not partners.** The state-owned
+    "Federal Partner" groups (Census, USGS, NOAA, USFS, BLM, FEMA ...)
+    contain item records owned by `soa-dnr` that point at federal
+    tenants' services; those fail `_validate_service_url` with a
+    message naming the reason. ARRC is also out: its items carry no
+    `orgId` at all, and the ownership check is fail-closed. Adding any
+    of these is a scope decision to make in `config-alaska-geoportal.yaml`,
+    never by relaxing the checks.
 
 ### Input validation
 

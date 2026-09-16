@@ -123,7 +123,7 @@ spike, that limit and the stage throttle are the levers.
 ## Health / smoke
 
 ```bash
-# 20 checks (19 MCP + the GET / landing page); defaults to the raw API
+# 23 checks (22 MCP + the GET / landing page); defaults to the raw API
 # Gateway URL, point at the custom domain or a local server with SMOKE_URL
 PYTHONIOENCODING=utf-8 SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp \
   python scripts/smoke_prod.py

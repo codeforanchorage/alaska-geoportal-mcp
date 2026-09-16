@@ -70,11 +70,14 @@ FORESTRY_ROADS = "f3298e00f4fa40fdb0d443bb61dcfee3"     # POLYLINE, 3,190 rows
 FORESTRY_BRIDGES = "e9bfc953765d4b279d3316de7967cc08"   # POINT, 183 rows
 AK_PARCELS = "458be3d8aafa47cd882af05cee983f6b"         # POLYGON, ~415k rows
 RS2477_TRAILS = "f97ec4306fb14ed59c71b02ee8cf0f47"      # on-prem DNR, EPSG:3338
-# A DOT&PF layer catalogued in the Geoportal whose service lives in the
-# DOT tenant (services.arcgis.com/r4A0V7UzH9fcLVvv/...). Whether the item
-# record is state-owned or not, it must be REJECTED: by the ownership
-# check if the orgId differs, else by the service-URL allowlist.
-DOT_ROADS_OTHER_TENANT = "bbe5cd90520e41348eef242a8f754172"
+# Alaska partner-org layers (allowed since 2026-09-16 via partner_orgs):
+DOT_ROADS = "bbe5cd90520e41348eef242a8f754172"          # DOT&PF tenant (services.arcgis.com/r4A0V7UzH9fcLVvv)
+MSB_EASEMENTS = "bf6394d5761b4c7aaa6e911cada11c09"      # Mat-Su on-prem (maps.matsugov.us)
+# A FEDERAL layer catalogued in the Geoportal: the item record is
+# state-owned but its service lives in the Census tenant
+# (services2.arcgis.com/FiaPA4ga0iQKduv3). Must be REJECTED by the
+# service-URL allowlist -- federal tenants are deliberately not partners.
+CENSUS_OTHER_TENANT = "b183ad37220e4bfb8f392fe1c488b4a3"
 
 # 1. ping
 try:
@@ -206,18 +209,39 @@ try:
 except Exception as e:
     check("error handling (bad field -> recovery hint)", False, repr(e))
 
-# 14. tenant scoping: a partner-tenant service catalogued in the Geoportal is refused
+# 14. tenant scoping: a FEDERAL-tenant service catalogued in the Geoportal is refused
 try:
-    r = call_tool("query_data", {"item_id": DOT_ROADS_OTHER_TENANT, "limit": 1})
+    r = call_tool("query_data", {"item_id": CENSUS_OTHER_TENANT, "limit": 1})
     res = r.get("result", {})
     t = text_of(r) if res.get("content") else json.dumps(res)
     ok = bool(res.get("isError")) and (
         "not the configured org" in t
         or "refusing to proxy other ArcGIS Online tenants" in t
     )
-    check("tenant scoping (partner-tenant service rejected)", ok, t[:90])
+    check("tenant scoping (federal-tenant service rejected)", ok, t[:90])
 except Exception as e:
-    check("tenant scoping (partner-tenant service rejected)", False, repr(e))
+    check("tenant scoping (federal-tenant service rejected)", False, repr(e))
+
+# 14b. Alaska partner orgs ARE queryable: DOT&PF (own AGOL tenant) and
+# Mat-Su (own ArcGIS Server), and search labels the publishing agency.
+try:
+    r = call_tool("query_data", {"item_id": DOT_ROADS, "limit": 1})
+    t = text_of(r)
+    check("partner org: DOT&PF roads (AGOL tenant)", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
+except Exception as e:
+    check("partner org: DOT&PF roads (AGOL tenant)", False, repr(e))
+try:
+    r = call_tool("query_data", {"item_id": MSB_EASEMENTS, "limit": 1})
+    t = text_of(r)
+    check("partner org: Mat-Su easements (maps.matsugov.us)", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
+except Exception as e:
+    check("partner org: Mat-Su easements (maps.matsugov.us)", False, repr(e))
+try:
+    r = call_tool("search_spatial_layers", {"query": "parcels", "layer_type": "layers", "limit": 10})
+    t = text_of(r)
+    check("partner org: search results labelled with agency", "Borough]" in t or "Anchorage]" in t, "agency label present" if ("Borough]" in t or "Anchorage]" in t) else t[:80])
+except Exception as e:
+    check("partner org: search results labelled with agency", False, repr(e))
 
 # 15. spatial_query_polygon against a POINT target via filter_item_id
 try:
@@ -293,7 +317,7 @@ except Exception as e:
     check("statewide parcels count (FNSB)", False, repr(e))
 
 
-# 20. GET / serves the human landing page (API Gateway MOCK, no Lambda)
+# 23. GET / serves the human landing page (API Gateway MOCK, no Lambda)
 try:
     root = URL.rsplit("/mcp", 1)[0] + "/"
     req = urllib.request.Request(root, headers={"Accept": "text/html"}, method="GET")

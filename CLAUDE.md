@@ -84,13 +84,17 @@ MOA-only parcel tools from the Anchorage fork (`find_parcel`,
 
 Statewide specifics worth knowing before editing:
 
-- **Tenant scoping is the security model.** `_assert_owned_by_configured_org`
-  rejects any item whose `orgId` is not `7HDiw78fcUiM2BWn`, and
-  `_validate_service_url` only proxies `*.arcgis.com` URLs carrying that org
-  id (or the portal host) plus on-prem `*.alaska.gov` hosts. Partner-org
-  layers catalogued in the Geoportal (boroughs, ADF&G, DOT&PF, federal) are
-  therefore discoverable in search but refused on query. Do not widen this
-  casually; see `docs/SECURITY.md`.
+- **Tenant scoping is the security model.** The allowed set is the state
+  org `7HDiw78fcUiM2BWn` plus every `partner_orgs` entry in the config (13
+  Alaska boroughs and agencies as of 2026-09-16). `_assert_owned_by_configured_org`
+  rejects items outside that set, and `_validate_service_url` only proxies
+  `*.arcgis.com` URLs whose first path segment is an allowed org id, the
+  portal host, on-prem `*.alaska.gov` hosts, or a partner's declared
+  `hosts`. Federal-partner layers catalogued in the Geoportal are therefore
+  discoverable but refused on query. Widen only by adding a `partner_orgs`
+  entry, never by relaxing the checks; see `docs/SECURITY.md`.
+- **Search results are labelled by agency** (`_org_label`): the item's
+  `orgId`, else the org id in its service URL, else a partner host.
 - **Two spatial references are common.** Hosted layers are Web Mercator OR
   Alaska Albers (EPSG:3338); the on-prem DNR/DGGS servers are all 3338.
   `_true_area_m2` corrects 3857 areas per feature by `cos^2(lat)` (2.5x at

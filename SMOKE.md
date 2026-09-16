@@ -1,7 +1,7 @@
 # Smoke record
 
-The live smoke suite is `scripts/smoke_prod.py` (20 checks: JSON-RPC
-surface, the 14 tools across hosted and on-prem layers, tenant scoping,
+The live smoke suite is `scripts/smoke_prod.py` (23 checks: JSON-RPC
+surface, the 14 tools across state, partner-org and on-prem layers, tenant scoping,
 error hints, and the `GET /` landing page). Run it against any environment:
 
 ```bash

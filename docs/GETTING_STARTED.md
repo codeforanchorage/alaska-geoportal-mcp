@@ -44,7 +44,7 @@ representative.
 ### Check it
 
 ```bash
-# 20 end-to-end checks against the live org
+# 23 end-to-end checks against the live org
 SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py
 
 # or a single call

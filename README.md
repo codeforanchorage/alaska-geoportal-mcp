@@ -33,14 +33,17 @@ built on [OpenContext](https://github.com/srihari-raman/opencontext).
 | Hub site | <https://gis.data.alaska.gov> |
 | ArcGIS Online org | `soa-dnr` (`7HDiw78fcUiM2BWn`) |
 | Public Feature Services | ~665, hosted on `services1.arcgis.com` and the on-prem `arcgis.dnr.alaska.gov` / `geoportal.dggs.dnr.alaska.gov` servers |
-| Catalog groups searched | 6 state-owned groups (see `config-alaska-geoportal.yaml`) |
+| Catalog groups searched | 22: the 6 state-owned groups plus the groups of 13 Alaska partner orgs (see `config-alaska-geoportal.yaml`) |
+| Alaska partner orgs | Municipality of Anchorage, Mat-Su, Kenai Peninsula, Fairbanks North Star, Kodiak Island and Haines boroughs, City of Unalaska, ADF&G, DEC, DCRA, DOT&PF, Alaska Energy Authority, UAA ACCS |
 
-**Only layers owned by the state org are queryable.** The Geoportal catalog
-also lists content from boroughs, ADF&G, DOT&PF, DEC and federal partners
-under their own organizations; those show up in search but are refused on
-query, by design (see [docs/SECURITY.md](docs/SECURITY.md)). Each of those orgs
-is a candidate for its own fork -- [docs/ALASKA_SOURCES.md](docs/ALASKA_SOURCES.md)
-lists them with verified org ids.
+**State and Alaska-partner layers are queryable; federal ones are not.** The
+Geoportal catalog also lists content from federal partners (Census, USGS,
+NOAA, USFS, BLM, FEMA ...) whose services live in federal ArcGIS tenants.
+Those show up in search but are refused on query, by design (see
+[docs/SECURITY.md](docs/SECURITY.md)). Search results label each partner
+layer with its publishing agency; unlabelled results are the state org's.
+[docs/ALASKA_SOURCES.md](docs/ALASKA_SOURCES.md) records every org and how
+it was verified.
 
 ## Tools (14, all read-only)
 

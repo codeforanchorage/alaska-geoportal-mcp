@@ -149,6 +149,59 @@ class AlaskaGeoportalPlugin(DataPlugin):
         self._initialized = False
         logger.info("Alaska Geoportal plugin shut down")
 
+    # ── Tenant allowlist helpers ──────────────────────────────────────────
+
+    @property
+    def _allowed_org_ids(self) -> Dict[str, str]:
+        """Lowercased org id -> display name for every org this server
+        proxies: the configured state org plus each Alaska partner org."""
+        cfg = self.plugin_config
+        if not cfg:
+            return {}
+        allowed = {(cfg.org_id or "").lower(): cfg.city_name}
+        for partner in cfg.partner_orgs:
+            allowed[partner.org_id.lower()] = partner.name
+        return allowed
+
+    @property
+    def _partner_hosts(self) -> frozenset:
+        """Exact on-prem hostnames declared by partner orgs."""
+        cfg = self.plugin_config
+        if not cfg:
+            return frozenset()
+        return frozenset(h for p in cfg.partner_orgs for h in p.hosts)
+
+    def _org_label(self, item: Dict[str, Any]) -> Optional[str]:
+        """Best-effort publishing-agency label for a search result.
+
+        Search results often omit ``orgId``, so fall back to the org id
+        in a ``*.arcgis.com/<org>/`` service URL or to a partner's
+        on-prem host. Returns None when nothing identifies the org.
+        """
+        allowed = self._allowed_org_ids
+        org = (item.get("orgId") or "").lower()
+        if org in allowed:
+            return allowed[org]
+        url = item.get("url") or ""
+        if url:
+            parsed = urlparse(url)
+            host = (parsed.hostname or "").lower()
+            if host == "arcgis.com" or host.endswith(".arcgis.com"):
+                first = parsed.path.lower().strip("/").split("/")[0]
+                if first in allowed:
+                    return allowed[first]
+            for partner in (self.plugin_config.partner_orgs if self.plugin_config else []):
+                if host in partner.hosts:
+                    return partner.name
+            if any(
+                host == suffix.lstrip(".") or host.endswith(suffix)
+                for suffix in self.ONPREM_HOST_SUFFIXES
+            ):
+                # State on-prem servers: DNR/DGGS, but also DEC, DCRA,
+                # ADF&G publish under *.alaska.gov -- label by host.
+                return host
+        return None
+
     # ── Portal search helpers ─────────────────────────────────────────────
 
     async def _run_search(self, q: str, limit: int) -> List[Dict[str, Any]]:
@@ -194,10 +247,11 @@ class AlaskaGeoportalPlugin(DataPlugin):
     ) -> List[Dict[str, Any]]:
         """Search the organization's spatial layers.
 
-        We scope the upstream query with ``orgid:<org_id>``; the
-        post-filter below is defense-in-depth in case Esri ever returns
-        results that don't honor that filter (e.g. shared items, cross-
-        org content, indexing quirks).
+        We scope the upstream query with ``orgid:`` for the state org OR
+        each configured partner org; the post-filter below is
+        defense-in-depth in case Esri ever returns results that don't
+        honor that filter (e.g. shared items, cross-org content,
+        indexing quirks).
 
         Items with ``orgId`` unset (None / empty) are kept -- many
         legitimate items in this tenant (FEMA-imported feeds, older
@@ -208,15 +262,19 @@ class AlaskaGeoportalPlugin(DataPlugin):
         the actual cross-org leak we care about.
         """
         type_filter = " OR ".join(f'type:"{t}"' for t in item_types)
-        clauses = [f"orgid:{self.plugin_config.org_id}", f"({type_filter})"]
+        org_ids = [self.plugin_config.org_id] + [
+            p.org_id for p in self.plugin_config.partner_orgs
+        ]
+        org_filter = " OR ".join(f"orgid:{o}" for o in org_ids)
+        clauses = [f"({org_filter})", f"({type_filter})"]
         if query:
             clauses.append(query)
         results = await self._run_search(" AND ".join(clauses), limit)
-        configured = (self.plugin_config.org_id or "").lower()
+        allowed = self._allowed_org_ids
         kept: List[Dict[str, Any]] = []
         for r in results:
             item_org = (r.get("orgId") or "").lower()
-            if not item_org or item_org == configured:
+            if not item_org or item_org in allowed:
                 kept.append(r)
         return kept
 
@@ -243,7 +301,9 @@ class AlaskaGeoportalPlugin(DataPlugin):
         item_id = item.get("id", "")
         url = self._item_portal_url(item)
 
-        lines = [f"**{title}**  _{item_type}_ -- ID: `{item_id}`"]
+        label = self._org_label(item)
+        agency = f"  [{label}]" if label and label != self.plugin_config.city_name else ""
+        lines = [f"**{title}**  _{item_type}_{agency} -- ID: `{item_id}`"]
         if snippet:
             lines.append(snippet)
         if tags:
@@ -929,15 +989,27 @@ class AlaskaGeoportalPlugin(DataPlugin):
         return item
 
     def _assert_owned_by_configured_org(self, item: Dict[str, Any]) -> None:
-        """Fail-closed ownership check. Missing orgId is also a rejection."""
-        configured = (self.plugin_config.org_id or "").lower()
+        """Fail-closed ownership check. Missing orgId is also a rejection.
+
+        Accepts the state org and every configured Alaska partner org.
+        Federal tenants (Census, USGS, NOAA, USFS ...) are catalogued in
+        the Geoportal but deliberately not listed, so their items -- and
+        state-owned item records that merely point at a federal
+        tenant's service -- are refused here or in _validate_service_url.
+        """
+        allowed = self._allowed_org_ids
         item_org = (item.get("orgId") or "").lower()
-        if not item_org or item_org != configured:
+        if not item_org or item_org not in allowed:
+            partners = len(self.plugin_config.partner_orgs)
             raise ToolInputError(
                 f"Item {item.get('id')!r} belongs to org "
                 f"{item.get('orgId')!r}, not the configured org "
-                f"{self.plugin_config.org_id!r}; this MCP only serves "
-                f"{self.plugin_config.city_name} data."
+                f"{self.plugin_config.org_id!r} or one of its {partners} "
+                f"Alaska partner orgs; this MCP only serves "
+                f"{self.plugin_config.city_name} and Alaska partner data. "
+                f"Federal partner layers are listed in the catalog but "
+                f"not queryable here -- name the publishing agency to the "
+                f"user rather than retrying."
             )
 
     @staticmethod
@@ -2379,13 +2451,15 @@ class AlaskaGeoportalPlugin(DataPlugin):
 
         For ``*.arcgis.com`` (ArcGIS Online), the URL must either match
         this org's portal host (e.g. ``soa-dnr.maps.arcgis.com``) or
-        include the configured ``org_id`` as the first path segment
+        include the configured ``org_id`` -- or a configured Alaska
+        partner's org id -- as the first path segment
         (e.g. ``services.arcgis.com/<org_id>/...``,
         ``tiles7.arcgis.com/<org_id>/...``). This keeps the MCP from
         being used as an open proxy for arbitrary ArcGIS Online tenants.
 
         On-prem State of Alaska hosts (``*.alaska.gov``) are accepted by
-        suffix.
+        suffix; partner on-prem hosts (``maps.matsugov.us`` ...) by exact
+        match from ``partner_orgs[].hosts``.
         """
         if not url:
             raise ToolInputError("service URL cannot be empty")
@@ -2403,18 +2477,22 @@ class AlaskaGeoportalPlugin(DataPlugin):
             for suffix in self.ONPREM_HOST_SUFFIXES
         ):
             return url
+        if host in self._partner_hosts:
+            return url
 
         if host == "arcgis.com" or host.endswith(".arcgis.com"):
             portal_host = self._portal_host
             if portal_host and host == portal_host:
                 return url
             org_id = (self.plugin_config.org_id or "").lower() if self.plugin_config else ""
-            if org_id and parsed.path.lower().startswith(f"/{org_id}/"):
+            first = parsed.path.lower().strip("/").split("/")[0]
+            if first and first in self._allowed_org_ids:
                 return url
             raise ToolInputError(
                 f"service URL host {host!r} (path {parsed.path!r}) is not "
-                f"scoped to org {org_id!r}; refusing to proxy other "
-                f"ArcGIS Online tenants"
+                f"scoped to org {org_id!r} or a configured Alaska partner "
+                f"org; refusing to proxy other ArcGIS Online tenants "
+                f"(federal partner layers are not queryable here)"
             )
 
         raise ToolInputError(
