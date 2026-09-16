@@ -6,7 +6,8 @@
 > by hand): `_c99024238c87cb187f66ebcb3c8f9957.alaska-geoportal` CNAME to
 > ACM for validation, and `alaska-geoportal` CNAME to
 > `d-495mjbzgx2.execute-api.us-west-2.amazonaws.com` (the
-> `custom_domain_target` output) for traffic.
+> `custom_domain_target` output) for traffic. DNS went live 2026-09-15
+> 17:07 AKDT; `scripts/smoke_prod.py` passes 19/19 over the custom domain.
 
 Prod stack: Lambda `alaska-geoportal-mcp-prod`, API Gateway `ae6gj7yvfg`
 (stage `prod`), us-west-2, account `420839047325`.
