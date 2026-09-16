@@ -947,6 +947,7 @@ class AlaskaGeoportalPlugin(DataPlugin):
         resource_id: Optional[str] = None,
         has_out_fields: bool = False,
         has_where: bool = False,
+        where_clause: Optional[str] = None,
     ) -> str:
         """Turn raw ArcGIS REST errors into actionable instructions.
 
@@ -997,6 +998,41 @@ class AlaskaGeoportalPlugin(DataPlugin):
                 f"field names -- they are CASE-SENSITIVE."
             )
             return f"{full}\n\nLikely cause: " + " ".join(hint_parts)
+        # Case C: "Unable to complete operation." is ArcGIS Server's
+        # (on-prem, e.g. arcgis.dnr.alaska.gov) catch-all for a WHERE
+        # clause that parses but cannot execute. Seen live on the DNR
+        # well-log layer: `WellDepth > 0` on a field stored as TEXT.
+        # The server names nothing, so name the comparisons ourselves.
+        if "Unable to complete operation" in full and where_clause:
+            numeric_cmps = re.findall(
+                r"\b([A-Za-z_][A-Za-z0-9_]*)\s*(?:>=|<=|<>|!=|>|<|=)"
+                r"\s*-?\d+(?:\.\d+)?(?![\w'])",
+                where_clause,
+            )
+            fields = sorted(set(numeric_cmps))
+            if fields:
+                shown = ", ".join(f"`{f}`" for f in fields)
+                return (
+                    f"{full}\n\nLikely cause: the WHERE clause compares "
+                    f"{shown} to a NUMBER, but on many state layers "
+                    f"numeric-looking fields are stored as TEXT "
+                    f"(type String in `get_layer_schema({item_arg})`), "
+                    f"and a text field cannot be compared to a bare "
+                    f"number. Either wrap it: "
+                    f"`CAST({fields[0]} AS INTEGER) > 0` (verified "
+                    f"working on the DNR ArcGIS Server), or compare as "
+                    f"text: `{fields[0]} <> ''` / `{fields[0]} = '42'`. "
+                    f"Check the Type column in the schema first."
+                )
+            return (
+                f"{full}\n\nLikely cause: the WHERE clause is valid SQL "
+                f"but cannot run on this layer -- a type mismatch "
+                f"(number vs text/date) or a function the server does "
+                f"not support. Call `get_layer_schema({item_arg})` and "
+                f"check each field's Type; retry with the simplest "
+                f"clause that works, then add conditions back one at "
+                f"a time."
+            )
         return full
 
     @staticmethod
@@ -1223,6 +1259,7 @@ class AlaskaGeoportalPlugin(DataPlugin):
                     resource_id=resource_id,
                     has_out_fields=raw_out_fields not in ("*", ""),
                     has_where=where_clause not in ("1=1", ""),
+                    where_clause=where_clause,
                 )
             )
 
@@ -1346,6 +1383,7 @@ class AlaskaGeoportalPlugin(DataPlugin):
                     resource_id=resource_id,
                     has_out_fields=raw_out_fields not in ("*", ""),
                     has_where=raw_where not in ("1=1", ""),
+                    where_clause=raw_where,
                 )
             )
 
@@ -1564,6 +1602,7 @@ class AlaskaGeoportalPlugin(DataPlugin):
                     resource_id=resource_id,
                     has_out_fields=raw_out_fields not in ("*", ""),
                     has_where=raw_where not in ("1=1", ""),
+                    where_clause=raw_where,
                 )
             )
 
@@ -2167,7 +2206,10 @@ class AlaskaGeoportalPlugin(DataPlugin):
             "Name` column, not the alias). Quote string literals "
             "with single quotes. For text searches prefer `LIKE "
             "'%substring%'` over `=` (which requires the full exact "
-            "value).\n\n"
+            "value). A field whose Type is **String** holds TEXT even "
+            "when its values look numeric (common on DNR layers: well "
+            "depths, acreages, years) -- `field > 0` fails on it; use "
+            "`CAST(field AS INTEGER) > 0` or compare as text.\n\n"
             f"Example: {example_call}\n\n"
             "To just COUNT matches, set `limit=1` and read the "
             "TOTAL COUNT line in the response."

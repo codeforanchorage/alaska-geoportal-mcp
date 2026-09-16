@@ -2837,6 +2837,45 @@ class TestErrorRewriter:
     that already knows the schema; we translate them into concrete
     next-step instructions the model can follow."""
 
+    def test_unable_to_complete_names_numeric_comparisons(self):
+        """Live failure 2026-09-16: `WellDepth > 0` on the DNR well-log
+        layer, where WellDepth is esriFieldTypeString. ArcGIS Server
+        says only "Unable to complete operation." -- the rewrite must
+        name the field and offer the CAST form that actually works."""
+        out = AlaskaGeoportalPlugin._rewrite_arcgis_error(
+            "Unable to complete operation.",
+            [],
+            resource_id="f66b10eb208b45569a0ea95e974e5dc0",
+            has_where=True,
+            where_clause=(
+                "Region='Municipality of Anchorage' AND WellDepth > 0 "
+                "AND PumpGPM >= 5.5"
+            ),
+        )
+        assert "`WellDepth`" in out and "`PumpGPM`" in out
+        assert "stored as TEXT" in out
+        assert "CAST(PumpGPM AS INTEGER) > 0" in out or "CAST(WellDepth AS INTEGER) > 0" in out
+        assert "get_layer_schema(item_id='f66b10eb208b45569a0ea95e974e5dc0')" in out
+        # Quoted numbers are text comparisons and must NOT be flagged.
+        assert "`Region`" not in out
+
+    def test_unable_to_complete_without_numeric_compare_gives_generic_hint(self):
+        out = AlaskaGeoportalPlugin._rewrite_arcgis_error(
+            "Unable to complete operation.",
+            [],
+            resource_id="a" * 32,
+            has_where=True,
+            where_clause="Name LIKE '%Chugach%' AND Year = '2020'",
+        )
+        assert "type mismatch" in out
+        assert "one at a time" in out
+
+    def test_unable_to_complete_without_where_passes_through(self):
+        out = AlaskaGeoportalPlugin._rewrite_arcgis_error(
+            "Unable to complete operation.", [], resource_id="a" * 32
+        )
+        assert out == "Unable to complete operation."
+
     def test_invalid_field_in_where_names_recovery_call(self):
         # ArcGIS does name the bad field when it's in a WHERE clause.
         # We surface it and tell the model exactly which tool to call
