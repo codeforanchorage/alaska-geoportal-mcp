@@ -83,8 +83,8 @@ python -c "from core.validators import load_and_validate_config; load_and_valida
 ## Deploy a change
 
 ```bash
-uv run ruff check core/ plugins/ server/ tests/
-uv run pytest tests/ -n auto --cov=core --cov=plugins --cov-fail-under=80
+uv run ruff check plugins/ tests/
+uv run pytest tests/ -n auto --cov=plugins --cov-fail-under=80
 ./scripts/deploy.sh -e prod          # plans, shows a summary, waits for "yes"
 SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp python scripts/smoke_prod.py
 ```

@@ -108,8 +108,8 @@ The local server hits the live org; nothing is mocked. See
 ### How do I run the tests?
 
 ```bash
-uv run ruff check core/ plugins/ server/ tests/
-uv run pytest tests/ -n auto --cov=core --cov=plugins --cov-fail-under=80
+uv run ruff check plugins/ tests/
+uv run pytest tests/ -n auto --cov=plugins --cov-fail-under=80
 ```
 
 CI runs the same on every push and PR to `main`.

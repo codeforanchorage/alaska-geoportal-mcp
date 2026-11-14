@@ -117,7 +117,7 @@ cutover is pending DNS. Operations notes are in
 ## Contributing
 
 ```bash
-uv run ruff check core/ plugins/ server/ tests/
+uv run ruff check plugins/ tests/
 uv run pytest tests/ -n auto
 ```
 

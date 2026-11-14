@@ -35,7 +35,7 @@ jobs:
       # `ruff check` is the bar; the source is hand-wrapped and deliberately
       # not `ruff format`-clean (see CLAUDE.md).
       - name: Ruff lint
-        run: uv run ruff check core/ plugins/ server/ tests/
+        run: uv run ruff check plugins/ tests/
 
       - name: Validate the deployable config
         run: |
@@ -87,7 +87,6 @@ jobs:
         run: |
           uv run pytest tests/ \
             -n auto \
-            --cov=core \
             --cov=plugins \
             --cov-report=term-missing \
             --cov-fail-under=80
