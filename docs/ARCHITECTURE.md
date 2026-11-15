@@ -149,7 +149,7 @@ async def health_check() -> bool
 **Reference:**
 - [Plugin template](../custom_plugins/template/plugin_template.py)
 - [Alaska Geoportal plugin](../plugins/alaska_geoportal/) – the deployed implementation
-- [CKAN plugin](../plugins/ckan/) – a smaller reference implementation
+- [CKAN plugin](https://github.com/CityOfBoston/OpenContext/tree/main/plugins/ckan/) – a smaller reference implementation
 
 ## Plugin Interface
 

@@ -50,7 +50,7 @@ included, are in [ALASKA_SOURCES.md](ALASKA_SOURCES.md).
 - Every query response carries data-freshness and coverage caveats; the
   coverage check is statewide and antimeridian-aware.
 - WHERE clauses go through the shared validator in
-  `plugins/arcgis/where_validator.py` (keyword denylist, identifier check
+  `arcgis_hub/where_validator.py`, in the opencontext-arcgis-hub package (keyword denylist, identifier check
   against the layer schema, `CAST(field AS <type>)` allowed).
 
 ### Example

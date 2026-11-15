@@ -119,7 +119,7 @@ CI runs the same on every push and PR to `main`.
 `plugins/alaska_geoportal/plugin.py` (tools, spatial helpers, caveats) and
 `config_schema.py`. The generic `ckan`, `arcgis` and `socrata` plugins from
 the framework are still present but disabled; the shared WHERE-clause
-validator in `plugins/arcgis/where_validator.py` is used by this plugin.
+validator in `arcgis_hub/where_validator.py`, in the opencontext-arcgis-hub package is used by this plugin.
 
 ### I want to point this at a different ArcGIS Online org.
 
