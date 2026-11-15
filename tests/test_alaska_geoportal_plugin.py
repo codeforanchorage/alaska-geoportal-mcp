@@ -46,7 +46,7 @@ class TestPluginAttributes:
         plugin = AlaskaGeoportalPlugin(geoportal_config)
         assert plugin.plugin_name == "alaska_geoportal"
         assert plugin.plugin_type == PluginType.OPEN_DATA
-        assert plugin.plugin_version == "1.0.0"
+        assert plugin.plugin_version == "1.1.0"
 
 
 # ── Initialization ─────────────────────────────────────────────────────
@@ -2199,7 +2199,7 @@ class TestGallerySearchGroups:
         await p._search_gallery("", 5)
 
         q = p._run_search.await_args.args[0]
-        assert q == f"(group:{cfg['gallery_group_ids'][0]})"
+        assert q == f"group:{cfg['gallery_group_ids'][0]}"
 
 
 class TestValidateServiceUrl:

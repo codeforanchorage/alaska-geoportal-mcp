@@ -87,7 +87,13 @@ class TestNotInferredFromValueError:
         response -- a genuine upstream fault whose traceback we want."""
         import inspect
 
-        src = inspect.getsource(AlaskaGeoportalPlugin)
+        # The shared base (opencontext-arcgis-hub) plus this
+        # deployment's subclass: together they are the whole plugin.
+        from arcgis_hub.plugin import ArcGISHubPlugin
+
+        src = inspect.getsource(ArcGISHubPlugin) + inspect.getsource(
+            AlaskaGeoportalPlugin
+        )
         # Every remaining `raise ValueError` in the plugin must be an
         # upstream fault, not caller input.
         for line in src.splitlines():

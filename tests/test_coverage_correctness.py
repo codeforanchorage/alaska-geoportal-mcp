@@ -145,14 +145,21 @@ class TestDiagnosticThresholds:
 
         src = inspect.getsource(AlaskaGeoportalPlugin._coverage_by_polygon)
         assert "possible_centroid_artifact" in src
-        assert "spatial_query_polygon" in src
+        # The escape hatch is region wording rendered by the shared base.
+        assert "coverage_verify_hint" in src
+        assert "spatial_query_polygon" in (
+            AlaskaGeoportalPlugin.TEXT["coverage_verify_hint"]
+        )
 
     def test_polygons_vs_parcels_caveat_exists(self):
         import inspect
 
         src = inspect.getsource(AlaskaGeoportalPlugin._coverage_by_polygon)
         assert "targets_are_polygons_not_parcels" in src
-        assert "one row per parcel" in src
+        assert "stacked_records_note" in src
+        assert "one row per parcel" in (
+            AlaskaGeoportalPlugin.TEXT["stacked_records_note"]
+        )
 
 
 class TestAllNullShortCircuit:

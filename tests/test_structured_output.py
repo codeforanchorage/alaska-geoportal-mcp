@@ -74,6 +74,12 @@ class TestSchemasAreWellFormed:
         """
         declared = set(AlaskaGeoportalPlugin.TOOL_OUTPUT_SCHEMAS)
         assert declared == {
+            "find_gis_content",
+            "browse_gallery",
+            "search_spatial_layers",
+            "get_item_details",
+            "get_layer_schema",
+            "search_layers_by_field",
             "aggregate_by_polygon",
             "coverage_by_polygon",
             "query_data",
@@ -270,17 +276,22 @@ class TestStructuredContentReachesTheWire:
         )
 
     @pytest.mark.asyncio
-    async def test_prose_only_tools_have_no_structured_content(self, plugin):
-        """Tools without an outputSchema must not emit structuredContent."""
+    async def test_discovery_tools_carry_structured_content(self, plugin):
+        """Since the shared base (opencontext-arcgis-hub) every tool
+        declares an outputSchema, the discovery tools included, so their
+        structured half must reach the result too."""
+        structured = {"query": {"text": "parks"}, "items": [], "caveats": []}
         with patch.object(
-            plugin, "_find_gis_content", AsyncMock(return_value="text")
+            plugin,
+            "_find_gis_content",
+            AsyncMock(return_value=("text", structured)),
         ):
             result = await plugin.execute_tool(
                 "find_gis_content", {"topic": "parks"}
             )
 
         assert result.success
-        assert result.structured_content is None
+        assert result.structured_content == structured
 
 
 # ── coverage_by_polygon ───────────────────────────────────────────────
