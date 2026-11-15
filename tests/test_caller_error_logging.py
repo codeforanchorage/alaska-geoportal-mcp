@@ -20,7 +20,7 @@ from core.interfaces import ToolInputError
 from core.mcp_server import MCPServer
 from plugins.alaska_geoportal.config_schema import AlaskaGeoportalPluginConfig
 from plugins.alaska_geoportal.plugin import AlaskaGeoportalPlugin
-from plugins.arcgis.where_validator import (
+from arcgis_hub.where_validator import (
     OrderByValidator,
     OutFieldsValidator,
     WhereValidator,
