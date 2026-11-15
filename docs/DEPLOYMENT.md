@@ -11,7 +11,7 @@ workspace `alaska-geoportal-prod`:
 
 | Resource | Name |
 |---|---|
-| Lambda (python3.11, x86_64) | `alaska-geoportal-mcp-prod` |
+| Lambda (python3.14, x86_64) | `alaska-geoportal-mcp-prod` |
 | API Gateway REST API + stage | `ae6gj7yvfg`, stage `prod` |
 | Custom domain | `alaska-geoportal.codeforanchorage.org` (ACM cert, regional) |
 | WAF | associated with the fleet web ACL `mcp-fleet-waf` (owned by the mcp-stats repo) |
