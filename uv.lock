@@ -817,7 +817,6 @@ name = "opencontext"
 version = "1.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "aiohttp" },
     { name = "httpx" },
     { name = "opencontext-arcgis-hub" },
     { name = "opencontext-core" },
@@ -829,6 +828,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "aiohttp" },
     { name = "jsonschema" },
     { name = "pip-audit" },
     { name = "pytest" },
@@ -840,7 +840,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.8.0" },
+    { name = "aiohttp", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "opencontext-arcgis-hub", git = "https://github.com/codeforanchorage/opencontext-arcgis-hub?rev=v1.0.0" },
