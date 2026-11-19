@@ -843,7 +843,7 @@ requires-dist = [
     { name = "aiohttp", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "opencontext-arcgis-hub", git = "https://github.com/codeforanchorage/opencontext-arcgis-hub?rev=v1.0.0" },
+    { name = "opencontext-arcgis-hub", git = "https://github.com/codeforanchorage/opencontext-arcgis-hub?rev=v1.1.0" },
     { name = "opencontext-core", git = "https://github.com/codeforanchorage/opencontext-core?rev=v1.4.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "pyclipper", specifier = ">=1.4.0" },
@@ -860,8 +860,8 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "opencontext-arcgis-hub"
-version = "1.0.0"
-source = { git = "https://github.com/codeforanchorage/opencontext-arcgis-hub?rev=v1.0.0#e1d15f4f1049b690703e7374c8ade85ac41fe813" }
+version = "1.1.0"
+source = { git = "https://github.com/codeforanchorage/opencontext-arcgis-hub?rev=v1.1.0#537de153ff66f21322e6f5eb5441b31c37615c24" }
 dependencies = [
     { name = "httpx" },
     { name = "pyclipper" },

@@ -2121,7 +2121,9 @@ class TestSearchOrgLayersFilter:
             await plugin._search_org_layers("roads", ["Feature Service"], 5)
         q = rs.await_args.args[0]
         assert q.startswith("(orgid:7HDiw78fcUiM2BWn OR orgid:fX5IGselyy1TirdY)")
-        assert q.endswith(" AND roads")
+        # The caller's text is its own clause (hub v1.1.0), so an OR
+        # in it cannot escape the org and item-type scope.
+        assert q.endswith(" AND (roads)")
 
     @pytest.mark.asyncio
     async def test_keeps_partner_org_results(self, plugin):
@@ -2183,7 +2185,7 @@ class TestGallerySearchGroups:
         for gid in geoportal_config["gallery_group_ids"]:
             assert f"group:{gid}" in q
         assert " OR " in q
-        assert q.endswith(" AND wildfire")
+        assert q.endswith(" AND (wildfire)")
         # The OR-group is parenthesised so the AND binds to the whole
         # union rather than to the last group only.
         assert q.startswith("(group:")
@@ -2214,8 +2216,11 @@ class TestValidateServiceUrl:
         return p
 
     def test_allows_configured_portal_host(self, plugin):
+        # Service endpoints only (hub v1.1.0): /sharing/rest/content on
+        # the portal host serves any organisation's item record.
         plugin._validate_service_url(
-            "https://soa-dnr.maps.arcgis.com/sharing/rest/content/items/abc"
+            "https://soa-dnr.maps.arcgis.com/arcgis/rest/services/X/"
+            "FeatureServer/0"
         )
 
     def test_allows_services_with_matching_org_id(self, plugin):
