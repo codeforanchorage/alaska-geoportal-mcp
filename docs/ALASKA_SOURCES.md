@@ -88,8 +88,13 @@ Deliberately **not** configured:
 | `72868306fe0648d49cd653bcdf22ea0e` | CLG_borough_POLY (boroughs, field `NAME`) | polygon | 20 | 3857 |
 | `f3298e00f4fa40fdb0d443bb61dcfee3` | Alaska Forestry Roads Public View (`SegmentLengthMiles`) | polyline | 3,190 | 3338 (hosted) |
 | `e9bfc953765d4b279d3316de7967cc08` | Forestry Bridges Public View | point | 183 | 3338 (hosted) |
-| `458be3d8aafa47cd882af05cee983f6b` | Alaska Statewide Parcels (`AK_Parcels`) | polygon | ~415,000 | 3857 |
+| `5dca472b380641b596cdca4e843d2662` | State Mining Claim (on-prem `arcgis.dnr.alaska.gov`, layer 0 = active) | polygon | ~41,000 | 3338 |
 | `f97ec4306fb14ed59c71b02ee8cf0f47` | RS2477 Trails (on-prem `arcgis.dnr.alaska.gov`) | polyline | 2,586 | 3338 |
+
+Alaska Statewide Parcels (`458be3d8aafa47cd882af05cee983f6b`, ~415,000
+rows) was in this table until 2026-11, when the state made the item
+private: it now answers anonymous requests with 403. The server has no
+statewide parcels source; parcel questions go to the borough layers.
 
 Note the mix of spatial references: hosted layers are NOT uniformly Web
 Mercator here. `_true_area_m2` corrects 3857 per feature and passes 3338

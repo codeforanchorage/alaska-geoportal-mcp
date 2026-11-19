@@ -37,7 +37,7 @@ instructions: |
     area, not the state. Read the LIMITED COVERAGE caveat the tools
     attach and say so when it applies to the question's area.
   - Many DNR / DGGS layers are polygon-heavy with large feature counts
-    (the statewide parcels layer alone has ~415,000 rows). For "how many"
+    (State Mining Claim alone has ~41,000 active claims). For "how many"
     and "total acres/miles" questions use query_data with limit=1 (read
     TOTAL COUNT), get_distinct_values, or aggregate_by_polygon -- never
     page through raw features to count them.
@@ -100,9 +100,12 @@ instructions: |
   partner layers (Census, USGS, NOAA, USFS, BLM, FEMA ...) also appear in
   the catalog but are NOT queryable here and are rejected with a clear
   error -- say so and name the agency rather than retrying. The same
-  layer may exist from two publishers (e.g. borough parcels vs the
-  statewide parcels layer); prefer the publisher whose scope matches the
-  question and say which one you used.
+  layer may exist from two publishers (e.g. a borough's roads vs the
+  DOT&PF road network); prefer the publisher whose scope matches the
+  question and say which one you used. There is NO public statewide
+  parcels layer (the state withdrew it from public access in 2026):
+  for parcel questions use the parcel layer of the borough concerned,
+  and say so when the area has none.
 
   All tools are READ-ONLY and safe to call without confirmation.
 

@@ -68,7 +68,9 @@ FIRE_SERVICE_AREAS = "45072954dcd84d78947a4294ed990657"  # POLYGON, 32 rows
 BOROUGHS = "72868306fe0648d49cd653bcdf22ea0e"           # CLG_borough_POLY
 FORESTRY_ROADS = "f3298e00f4fa40fdb0d443bb61dcfee3"     # POLYLINE, 3,190 rows
 FORESTRY_BRIDGES = "e9bfc953765d4b279d3316de7967cc08"   # POINT, 183 rows
-AK_PARCELS = "458be3d8aafa47cd882af05cee983f6b"         # POLYGON, ~415k rows
+# The state made Alaska Statewide Parcels (458be3d8...) private in
+# 2026-11; State Mining Claim took its place as the large-layer check.
+MINING_CLAIMS = "5dca472b380641b596cdca4e843d2662"      # on-prem DNR, POLYGON, ~41k active
 RS2477_TRAILS = "f97ec4306fb14ed59c71b02ee8cf0f47"      # on-prem DNR, EPSG:3338
 # Alaska partner-org layers (allowed since 2026-09-16 via partner_orgs):
 DOT_ROADS = "bbe5cd90520e41348eef242a8f754172"          # DOT&PF tenant (services.arcgis.com/r4A0V7UzH9fcLVvv)
@@ -304,17 +306,16 @@ try:
 except Exception as e:
     check("polyline source aggregation (road miles by borough)", False, repr(e))
 
-# 19. statewide parcels: count-only on a 415k-row layer stays fast
+# 19. state mining claims: count-only on a ~41k-row layer stays fast
 try:
     r = call_tool("query_data", {
-        "item_id": AK_PARCELS,
-        "where": "local_gov='Fairbanks North Star Borough'",
+        "item_id": MINING_CLAIMS,
         "limit": 1,
     })
     t = text_of(r)
-    check("statewide parcels count (FNSB)", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
+    check("state mining claims count", "TOTAL COUNT" in t, t.split("\n")[3][:80] if len(t.split("\n")) > 3 else t[:80])
 except Exception as e:
-    check("statewide parcels count (FNSB)", False, repr(e))
+    check("state mining claims count", False, repr(e))
 
 
 # 23. GET / serves the human landing page (API Gateway MOCK, no Lambda)

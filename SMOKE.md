@@ -21,7 +21,7 @@ Notable live figures from that run (they drift as the state republishes):
 |---|---|
 | Fire Service Areas | 32 features; Fairbanks point lookup → `CITY OF FAIRBANKS` (FNSB) |
 | RS2477 Trails (on-prem DNR, EPSG:3338) | 2,586 features |
-| Alaska Statewide Parcels, `local_gov='Fairbanks North Star Borough'` | 63,888 of ~415,000 |
+| Alaska Statewide Parcels, `local_gov='Fairbanks North Star Borough'` | 63,888 of ~415,000 (item made private by the state 2026-11; check replaced by State Mining Claim) |
 | Forestry road miles by borough (polyline aggregation) | 9 boroughs, 3,190 segments, 1,058 outside any borough (Unorganized Borough) |
 | DOT&PF Roads and Highways (partner tenant) | refused by the service-URL allowlist, as designed |
 

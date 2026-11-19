@@ -27,7 +27,7 @@ shared among them.
 ### What data can it reach?
 
 Layers owned by the `soa-dnr` ArcGIS Online org (DNR land status,
-statewide parcels, forestry, state parks, oil & gas, DGGS geology; about
+mining claims, forestry, state parks, oil & gas, DGGS geology; about
 665 public Feature Services) plus the layers of 13 Alaska partner
 organizations that publish into the Geoportal: the Municipality of
 Anchorage, the Mat-Su, Kenai Peninsula, Fairbanks North Star, Kodiak

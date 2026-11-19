@@ -3,7 +3,7 @@
 A statewide [Model Context Protocol](https://modelcontextprotocol.io/) server
 over the **State of Alaska Geoportal** -- the Alaska Geospatial Office's
 ArcGIS Online organization (`soa-dnr`), which publishes several hundred public
-Feature Services from DNR (land status, statewide parcels, forestry, state
+Feature Services from DNR (land status, mining claims, forestry, state
 parks, oil & gas, DGGS geology) and hosts the catalog that other state
 agencies and boroughs share into.
 

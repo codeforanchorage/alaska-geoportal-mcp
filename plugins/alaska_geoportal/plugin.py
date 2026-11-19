@@ -106,11 +106,11 @@ class AlaskaGeoportalPlugin(ArcGISHubPlugin):
             "~2.5x at Ketchikan, ~4.3x at Anchorage, ~10x at Utqiagvik"
         ),
         "spanning_example": (
-            "should be a parcels layer (e.g. Alaska Statewide "
-            "Parcels) and classification should be a zoning or "
+            "should be a parcels layer (e.g. a borough's "
+            "parcels) and classification should be a zoning or "
             "land-status layer. Use "
         ),
-        "parcel_layer_examples": "(e.g. Alaska Statewide Parcels) ",
+        "parcel_layer_examples": "(e.g. a borough parcels layer) ",
         "shape_area_note": (
             "NOTE: Shape__Area on ArcGIS Online hosted "
             "layers is WEB MERCATOR, not a real area -- "
@@ -120,12 +120,12 @@ class AlaskaGeoportalPlugin(ArcGISHubPlugin):
         "hosted_layers": "hosted layers",
     }
 
-    # State layers are often all-lowercase (the statewide parcels layer
-    # uses `parcel_id`, Forestry Roads `road_name`), so the shared
+    # State layers are often all-lowercase (Forestry Roads uses
+    # `road_name`, some parcel layers `parcel_id`), so the shared
     # priority lists gain lowercase twins here.
     NATURAL_ID_FIELD_PRIORITY = (
-        # Parcel-style identifiers (most common request shape). The
-        # statewide parcels layer (AK_Parcels) uses lowercase `parcel_id`.
+        # Parcel-style identifiers (most common request shape); some
+        # Alaska parcel layers use lowercase `parcel_id`.
         "Parcel_ID", "PARCEL_ID", "ParcelID", "PARCELID", "parcel_id",
         "Parcel_Num", "PARCEL_NUM", "ParcelNum", "PARCELNUM",
         "Parcel_Number", "ParcelNumber",
