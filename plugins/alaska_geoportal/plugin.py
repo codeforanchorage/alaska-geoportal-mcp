@@ -169,9 +169,14 @@ class AlaskaGeoportalPlugin(ArcGISHubPlugin):
         # their items -- and state-owned item records that merely point
         # at a federal tenant's service -- are refused.
         partners = len(self._partner_orgs)
+        org = item.get("orgId")
+        owner = (
+            f"belongs to org {org!r}"
+            if org
+            else "belongs to another ArcGIS account"
+        )
         return (
-            f"Item {item.get('id')!r} belongs to org "
-            f"{item.get('orgId')!r}, not the configured org "
+            f"Item {item.get('id')!r} {owner}, not the configured org "
             f"{self.plugin_config.org_id!r} or one of its {partners} "
             f"Alaska partner orgs; this MCP only serves "
             f"{self.plugin_config.city_name} and Alaska partner data. "
