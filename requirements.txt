@@ -7,7 +7,7 @@ opencontext-core @ git+https://github.com/codeforanchorage/opencontext-core@v1.4
 # plugin has in common with the other ArcGIS Hub servers. The plugin in
 # plugins/ subclasses it. Upgrade by moving the tag; keep in step with
 # pyproject.toml.
-opencontext-arcgis-hub @ git+https://github.com/codeforanchorage/opencontext-arcgis-hub@v1.1.1
+opencontext-arcgis-hub @ git+https://github.com/codeforanchorage/opencontext-arcgis-hub@v1.2.0
 
 httpx>=0.27.0
 pyclipper>=1.4.0
