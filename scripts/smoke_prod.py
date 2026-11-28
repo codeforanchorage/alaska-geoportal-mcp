@@ -16,7 +16,7 @@ import urllib.request
 
 # Prod API Gateway (deployed 2026-09-15). Override with SMOKE_URL, e.g.
 # http://localhost:8000/mcp for a local server or the custom domain
-# https://alaska-geoportal.codeforanchorage.org/mcp once DNS is live.
+# https://alaska-geoportal.codeforanchorage.org/mcp.
 URL = os.environ.get(
     "SMOKE_URL", "https://ae6gj7yvfg.execute-api.us-west-2.amazonaws.com/prod/mcp"
 )
@@ -66,7 +66,7 @@ def check(label, ok, detail=""):
 CWPP_AREAS = "9a91ae205d544b53a35842591afcc2a1"        # POLYGON, 12 rows
 FIRE_SERVICE_AREAS = "45072954dcd84d78947a4294ed990657"  # POLYGON, 32 rows
 BOROUGHS = "72868306fe0648d49cd653bcdf22ea0e"           # CLG_borough_POLY
-FORESTRY_ROADS = "f3298e00f4fa40fdb0d443bb61dcfee3"     # POLYLINE, 3,190 rows
+FORESTRY_ROADS = "f3298e00f4fa40fdb0d443bb61dcfee3"     # POLYLINE, 6,144 rows (2026-11-28)
 FORESTRY_BRIDGES = "e9bfc953765d4b279d3316de7967cc08"   # POINT, 183 rows
 # The state made Alaska Statewide Parcels (458be3d8...) private in
 # 2026-11; State Mining Claim took its place as the large-layer check.

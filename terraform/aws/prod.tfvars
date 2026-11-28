@@ -14,8 +14,8 @@ lambda_timeout  = 28
 api_quota_limit = 3000
 # Rate/burst feed BOTH the stage-wide throttle (the aggregate cap on the
 # keyless public /mcp) and the usage-plan throttle (API-key traffic).
-# Steady-state posture, restored 2026-08-23 after the ESRI UC week raise
-# (2026-07-13 .. 2026-08-23 ran at 20 / 40); see docs/RUNBOOK.md.
+# Steady-state posture; the raised posture for a busy week is 20 / 40
+# (see docs/RUNBOOK.md).
 api_rate_limit  = 5
 api_burst_limit = 10
 custom_domain   = "alaska-geoportal.codeforanchorage.org"
@@ -23,7 +23,7 @@ custom_domain   = "alaska-geoportal.codeforanchorage.org"
 # Cap concurrent Lambda executions. Cost and blast-radius protection if
 # WAF is bypassed via distributed sources. Conversational MCP traffic does
 # not need horizontal scale; raise if legitimate users start getting throttled.
-# Steady-state: 10, restored 2026-08-23 (ESRI UC week ran at 25). Bounds
+# Steady-state: 10 (raised posture: 25). Bounds
 # worst-case Lambda spend to ~10 GB-s/s ~= $14/day even at full saturation.
 lambda_reserved_concurrency = 10
 
@@ -32,14 +32,11 @@ lambda_reserved_concurrency = 10
 # real users and tight enough to slow scrapers and denial-of-wallet probes.
 # NOTE: ALL claude.ai users share ~5 Anthropic egress IPs (160.79.106.32/27),
 # so this per-IP limit is effectively an aggregate cap on claude.ai traffic.
-# Steady-state: 300, restored 2026-08-23 (ESRI UC week ran at 600).
+# Steady-state: 300 (raised posture: 600).
 # NOTE: INERT while use_shared_waf = true -- it only takes effect on a
 # rollback to a dedicated ACL. The LIVE per-IP limit lives in mcp-stats'
-# `fleet_waf_members` under key `alaska-geoportal` and must be set to 300
-# THERE as well, or the effective WAF cap stays at 600.
-# TODO(go-live): add an `alaska-geoportal` key to mcp-stats
-# `fleet_waf_members` BEFORE the first prod deploy -- with
-# use_shared_waf = true and no fleet entry, this host has no per-IP rule.
+# `fleet_waf_members` under key `alaska-geoportal` (300, with
+# allow_large_body); change it THERE.
 waf_rate_limit_per_5min = 300
 
 # CloudWatch alarms (errors, throttles, 5xx, probing, duration) notify this
@@ -56,12 +53,11 @@ enable_gcc_route = false
 
 # Use the fleet-wide WAF instead of a dedicated ACL for this MCP. A dedicated
 # ACL costs ~$8/mo in fixed AWS charges regardless of traffic; the shared ACL
-# keeps this MCP's 600/5min limit as its own counter, aggregated on
+# keeps this MCP's per-IP limit as its own counter, aggregated on
 # (IP, Host) so it stays independent of the other MCPs sharing that limit.
 #
-# The effective limit now lives in mcp-stats' `fleet_waf_members` under the key
-# `alaska-geoportal` (TODO: add that key before go-live, see above) --
-# change it there, not here. The rate-limit value above is retained
+# The effective limit lives in mcp-stats' `fleet_waf_members` under the key
+# `alaska-geoportal` -- change it there, not here. The rate-limit value above is retained
 # so that rolling back (use_shared_waf = false) restores the original limit.
 # See mcp-stats/docs/waf-consolidation.md.
 use_shared_waf = true

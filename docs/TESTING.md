@@ -14,7 +14,7 @@ The server runs at `http://localhost:8000/mcp` and queries the live
 ## Fastest check: the smoke suite
 
 ```bash
-SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py   # 20 checks
+SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py   # 23 checks
 python scripts/smoke_aggregate.py                                   # aggregation, direct plugin
 ```
 

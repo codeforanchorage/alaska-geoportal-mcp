@@ -19,7 +19,7 @@ workspace `alaska-geoportal-prod`:
 | Terraform state | S3 `alaska-geoportal-opencontext-tfstate`, lock table `terraform-state-lock` (shared across the fleet) |
 
 There is **no staging stack**. The parent repo removed it; `deploy.sh -e
-staging` has no tfvars to run with.
+staging` stops with a message until a `terraform/aws/staging.tfvars` exists.
 
 ## Prerequisites
 
@@ -71,7 +71,7 @@ SMOKE_URL=https://alaska-geoportal.codeforanchorage.org/mcp python scripts/smoke
 ```yaml
 aws:
   region: "us-west-2"
-  lambda_name: "alaska-geoportal-mcp-staging"   # prod name comes from prod.tfvars
+  lambda_name: "alaska-geoportal-mcp-prod"      # prod.tfvars wins for this one
   lambda_memory: 1024                           # aggregate_by_polygon holds up to 5000 features
   lambda_timeout: 28
 ```

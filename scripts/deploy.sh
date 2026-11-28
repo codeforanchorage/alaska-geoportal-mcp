@@ -27,7 +27,8 @@ show_usage() {
     echo "Usage: $0 --environment <staging|prod> [--tfworkspace <name>] [--allow-dirty]"
     echo ""
     echo "Options:"
-    echo "  --environment, -e   Deployment environment: staging or prod (required)"
+    echo "  --environment, -e   Deployment environment: staging or prod (required)."
+    echo "                      Only prod has a tfvars file in this repo."
     echo "  --tfworkspace, -w   Terraform workspace name (default: alaska-geoportal-staging or alaska-geoportal-prod)"
     echo "  --allow-dirty       Package the working tree even with uncommitted changes"
     echo "                      (emergencies only; the build is stamped as dirty)"
@@ -258,6 +259,11 @@ EOF
 )
 
 TFVARS_FILE="terraform/aws/${ENVIRONMENT}.tfvars"
+if [ ! -f "$TFVARS_FILE" ]; then
+    echo -e "${RED}❌ Error: ${TFVARS_FILE} not found${NC}"
+    echo "This repo has only a prod stack. Create that file to add a '${ENVIRONMENT}' stack."
+    exit 1
+fi
 LAMBDA_NAME=$(grep '^lambda_name' "$TFVARS_FILE" | sed 's/.*=\s*"\(.*\)"/\1/')
 
 echo -e "${YELLOW}📦 Step 2: Packaging Lambda code...${NC}"

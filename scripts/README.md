@@ -17,15 +17,13 @@ Deployment script that validates configuration and deploys the MCP server to AWS
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--environment` | `-e` | Yes | `staging` or `prod` |
+| `--environment` | `-e` | Yes | `staging` or `prod`. Only `prod` has a tfvars file in this repo; `staging` stops with a message until `terraform/aws/staging.tfvars` exists |
 | `--tfworkspace` | `-w` | No | Terraform workspace name (default: `alaska-geoportal-staging` or `alaska-geoportal-prod`) |
 | `--help` | `-h` | No | Show help |
 
 **Examples:**
 ```bash
-./scripts/deploy.sh --environment staging
 ./scripts/deploy.sh -e prod
-./scripts/deploy.sh --environment staging --tfworkspace my-workspace
 ./scripts/deploy.sh -e prod -w alaska-geoportal-prod-v2
 ```
 
@@ -40,7 +38,7 @@ Deployment script that validates configuration and deploys the MCP server to AWS
 - Python 3.11+
 - AWS CLI configured
 - Terraform installed
-- Valid `config.yaml` in project root (create from `config-example.yaml`)
+- Valid `config.yaml` in project root (`cp config-alaska-geoportal.yaml config.yaml`)
 
 ### `local_server.py`
 
@@ -64,7 +62,7 @@ python3 scripts/local_server.py
 **Requirements:**
 - Python 3.11+
 - `aiohttp` package (`pip install aiohttp`)
-- Valid `config.yaml` in project root (create from `config-example.yaml`)
+- Valid `config.yaml` in project root (`cp config-alaska-geoportal.yaml config.yaml`)
 
 **Testing:**
 ```bash

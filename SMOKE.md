@@ -12,18 +12,21 @@ PYTHONIOENCODING=utf-8 python scripts/smoke_aggregate.py     # direct-plugin agg
 
 ## Latest result
 
-2026-09-16, against `https://alaska-geoportal.codeforanchorage.org/mcp`
-(API Gateway `ae6gj7yvfg`, Lambda `alaska-geoportal-mcp-prod`): **20/20**.
+2026-11-28, against `https://alaska-geoportal.codeforanchorage.org/mcp`
+(API Gateway `ae6gj7yvfg`, Lambda `alaska-geoportal-mcp-prod`): **23/23**.
 
-Notable live figures from that run (they drift as the state republishes):
+Notable live figures (they drift as the state republishes):
 
 | Check | Result |
 |---|---|
 | Fire Service Areas | 32 features; Fairbanks point lookup → `CITY OF FAIRBANKS` (FNSB) |
 | RS2477 Trails (on-prem DNR, EPSG:3338) | 2,586 features |
 | Alaska Statewide Parcels, `local_gov='Fairbanks North Star Borough'` | 63,888 of ~415,000 (item made private by the state 2026-11; check replaced by State Mining Claim) |
-| Forestry road miles by borough (polyline aggregation) | 9 boroughs, 3,190 segments, 1,058 outside any borough (Unorganized Borough) |
-| DOT&PF Roads and Highways (partner tenant) | refused by the service-URL allowlist, as designed |
+| State Mining Claim (on-prem DNR) | 41,377 features |
+| Forestry road miles by borough (polyline aggregation) | layer now has 6,144 segments, above the 5,000 source cap: the run reads 5,000 (8 boroughs, 1,661 outside any borough) and its totals are partial. Single-borough check via `spatial_query_polygon`: 123 segments in the Mat-Su |
+| DOT&PF Roads and Highways (partner tenant) | queryable since the 2026-09-16 partner-org change, 27,926 features |
+| Mat-Su easements (partner on-prem, `maps.matsugov.us`) | 24,934 features |
+| Census layer in a federal tenant | refused by the service-URL allowlist, as designed |
 
 ## Verified org values
 
@@ -51,3 +54,7 @@ Mercator, so the area correction and the coverage check both handle 3338.
 - 2026-09-16: first real session surfaced `Unable to complete operation`
   on a text-typed numeric field (DNR well logs); error hint and validator
   fixed and redeployed. Landing page added; suite grew to 20 checks.
+  Later the same day the partner-org scope added three checks (23).
+- 2026-11: the state made Alaska Statewide Parcels private; the
+  large-layer check moved to State Mining Claim. Forestry Roads passed
+  the 5,000-feature aggregation cap (6,144 segments on 2026-11-28).

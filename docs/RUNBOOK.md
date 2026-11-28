@@ -66,15 +66,16 @@ in-place):
 
 ## Traffic postures
 
-| Var | Steady state | Raised (e.g. ESRI UC week) |
+| Var | Steady state | Raised (e.g. a conference week) |
 |---|---|---|
 | `api_rate_limit` | 5 | 20 |
 | `api_burst_limit` | 10 | 40 |
 | `lambda_reserved_concurrency` | 10 | 25 |
 | `waf_rate_limit_per_5min` | 300 | 600 |
 
-**Current posture: STEADY STATE**, restored 2026-08-23. The ESRI UC
-raise ran 2026-07-13 .. 2026-08-23.
+**Current posture: STEADY STATE**, unchanged since the first deploy on
+2026-09-15. The raised column is the posture the parent Anchorage server
+ran during ESRI UC 2026; this stack has not used it.
 
 To change posture, edit `terraform/aws/prod.tfvars` and deploy,
 answering `yes` at the script's own confirm gate:
@@ -90,8 +91,7 @@ answering `yes` at the script's own confirm gate:
 > The value in `prod.tfvars` applies only on a rollback to a dedicated
 > ACL.
 >
-> The fleet value was lowered to 300 in mcp-stats on 2026-08-23, so the
-> live per-IP limit now matches the 300 shown above.
+> The fleet value for this host is 300, matching the 300 shown above.
 
 Worst-case cost at full 24/7 saturation: steady ≈ $17/day, UC posture
 ≈ $50/day. Realistic traffic is far below both (conversational MCP is

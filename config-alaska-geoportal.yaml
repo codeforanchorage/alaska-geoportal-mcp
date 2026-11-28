@@ -73,15 +73,19 @@ instructions: |
        SegmentLengthMiles field.
     b. find_gis_content("borough") -> CLG_borough_POLY (borough polygons,
        field NAME).
-    c. aggregate_by_polygon(source_item_id=<forestry roads>,
-       aggregation_item_id=<boroughs>, group_by_field='NAME',
-       sum_fields=['SegmentLengthMiles']). Read the Matanuska-Susitna
-       Borough row; segments are assigned by midpoint, so report the
-       total and note that caveat.
-    d. Alternatively, for a single borough: spatial_query_polygon on the
-       roads layer with filter_item_id=<boroughs>,
-       filter_where="NAME='Matanuska-Susitna Borough'", then sum
-       SegmentLengthMiles across the returned rows.
+    c. ONE borough: spatial_query_polygon on the roads layer with
+       filter_item_id=<boroughs>, filter_where="NAME='Matanuska-Susitna
+       Borough'", out_fields='SegmentLengthMiles'. If the result says
+       TRUNCATED, repeat once with limit=<TOTAL COUNT> (max 1000), then
+       sum SegmentLengthMiles. Segments crossing the boundary count whole.
+    d. A breakdown across ALL boroughs: aggregate_by_polygon(
+       source_item_id=<forestry roads>, aggregation_item_id=<boroughs>,
+       group_by_field='NAME', sum_fields=['SegmentLengthMiles']).
+       Segments are assigned by midpoint. It reads at most 5,000 source
+       features and this layer has more: when the result says the source
+       fetch hit the cap, every row is PARTIAL -- do not report it as a
+       total. Split the run with source_where (e.g. by a region or
+       OBJECTID range) and add the parts, or use (c) per borough.
 
   Worked example -- "which fire service areas are in the Fairbanks North
   Star Borough":
@@ -203,22 +207,10 @@ plugins:
     # hosting; observed worst case so far is well under this.
     timeout: 20
 
-  ckan:
-    enabled: false
-    base_url: "https://data.example.gov/"
-    portal_url: "https://data.example.gov/"
-    city_name: "Example"
-    timeout: 120
-
-  arcgis:
-    enabled: false
-    portal_url: "https://hub.arcgis.com"
-    city_name: "Example"
-    timeout: 120
-
 aws:
   region: "us-west-2"
-  lambda_name: "alaska-geoportal-mcp-staging"
+  # terraform/aws/prod.tfvars wins for this one (see main.tf locals).
+  lambda_name: "alaska-geoportal-mcp-prod"
   # Sized for aggregate_by_polygon, which holds up to 5000 source
   # features plus a bounded 32-entry polygon cache in memory.
   lambda_memory: 1024

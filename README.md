@@ -71,7 +71,7 @@ uv sync                                   # or: pip install -r requirements.txt
 cp config-alaska-geoportal.yaml config.yaml
 PYTHONIOENCODING=utf-8 python scripts/local_server.py   # http://localhost:8000/mcp
 
-# in another shell: 20 end-to-end checks against the live org
+# in another shell: 23 end-to-end checks against the live org
 SMOKE_URL=http://localhost:8000/mcp python scripts/smoke_prod.py
 ```
 
@@ -97,8 +97,8 @@ the Go client in `client/`. See
 
 AWS Lambda + API Gateway via Terraform (`terraform/aws/`), one Lambda per
 fork. `./scripts/deploy.sh -e prod` packages `config.yaml` into the zip and
-plans before applying. Deployed to prod on 2026-09-15; the custom domain
-cutover is pending DNS. Operations notes are in
+plans before applying. Live in prod on the custom domain since 2026-09-15;
+there is no staging stack. Operations notes are in
 [docs/RUNBOOK.md](docs/RUNBOOK.md).
 
 ## Documentation

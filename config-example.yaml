@@ -33,30 +33,12 @@ organization: "Your Organization Name" # e.g., "State of Alaska"
 # For additional MCP servers, fork this repository again
 #
 plugins:
-  # Built-in: CKAN (for CKAN-based open data portals)
-  # Examples: data.boston.gov, data.gov, data.gov.uk
-  ckan:
-    enabled: false # Set to true to use
-    base_url: "https://data.example.gov/" # CKAN API base URL
-    portal_url: "https://data.example.gov/" # Public portal URL
-    city_name: "Your City" # City/organization name
-    timeout: 120 # HTTP timeout in seconds
-    # api_key: "${CKAN_API_KEY}"  # Optional: CKAN API key for authenticated requests
-
-  # Built-in: ArcGIS Hub (for ArcGIS Hub open data portals)
-  # Examples: hub.arcgis.com, data-boston.hub.arcgis.com
-  arcgis:
-    enabled: false # Set to true to use
-    portal_url: "https://hub.arcgis.com"
-    city_name: "Your City"
-    timeout: 120
-    # token: "${ARCGIS_TOKEN}"  # Optional: Bearer token for private items
-
-  # Built-in: Alaska Geoportal (this fork's plugin). Statewide ArcGIS
-  # Online org of the Alaska Geospatial Office (soa-dnr). See
+  # Alaska Geoportal (this fork's only plugin; the generic ckan / arcgis
+  # plugins of upstream OpenContext are not in this repo). Statewide
+  # ArcGIS Online org of the Alaska Geospatial Office (soa-dnr). See
   # config-alaska-geoportal.yaml for the verified, deployable values.
   alaska_geoportal:
-    enabled: false # Set to true to use (and disable the others)
+    enabled: true
     portal_base_url: "https://soa-dnr.maps.arcgis.com/sharing/rest"
     org_id: "7HDiw78fcUiM2BWn" # from .../sharing/rest/portals/self?f=json
     # One or more ArcGIS group ids (32-char hex) searched as a union.
